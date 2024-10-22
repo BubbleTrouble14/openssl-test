@@ -1,0 +1,66 @@
+name: Build and Publish OpenSSL
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  release:
+    types: [created]
+
+env:
+  NDK_VERSION: 26.1.10909125
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up JDK
+      uses: actions/setup-java@v4
+      with:
+        java-version: '17'
+        distribution: 'temurin'
+
+    - name: Setup Android SDK
+      uses: android-actions/setup-android@v3
+
+    - name: Cache NDK
+      uses: actions/cache@v3
+      with:
+        path: ${ANDROID_SDK_ROOT}/ndk/${{ env.NDK_VERSION }}
+        key: ${{ runner.os }}-ndk-${{ env.NDK_VERSION }}
+
+    - name: Install NDK
+      run: |
+        yes | sdkmanager --install "ndk;${{ env.NDK_VERSION }}"
+        echo "ANDROID_NDK_HOME=${ANDROID_SDK_ROOT}/ndk/${{ env.NDK_VERSION }}" >> $GITHUB_ENV
+
+    - name: Import GPG key
+      uses: crazy-max/ghaction-import-gpg@v6
+      with:
+        gpg_private_key: ${{ secrets.GPG_PRIVATE_KEY }}
+        passphrase: ${{ secrets.GPG_PASSPHRASE }}
+        git_user_signingkey: true
+        git_commit_gpgsign: true
+
+    - name: Build and verify
+      run: |
+        ./gradlew buildAll \
+          -PndkPath=${ANDROID_NDK_HOME} \
+          --stacktrace
+
+    - name: Publish package
+      if: github.event_name == 'release'
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        ./gradlew publish
+
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: openssl-ndkports
+        path: build/distributions/*.zip
