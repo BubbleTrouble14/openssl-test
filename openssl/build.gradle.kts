@@ -6,7 +6,7 @@ import java.security.MessageDigest
 import org.gradle.api.DefaultTask
 import org.gradle.api.GradleException
 
-val portVersion = "3.4.0"  // Updated to latest version
+val portVersion = "3.4.0"
 val opensslDownloadUrl = "https://github.com/openssl/openssl/releases/download/openssl-${portVersion}/openssl-${portVersion}.tar.gz"
 val opensslSha256Url = "${opensslDownloadUrl}.sha256"
 val opensslAscUrl = "${opensslDownloadUrl}.asc"
@@ -100,28 +100,10 @@ tasks.named("extractSrc") {
     dependsOn("verifyOpenSSL")
 }
 
-
-// Register and configure the buildPort task
 tasks.register<AdHocPortTask>("buildPort") {
     dependsOn("extractSrc")
 
     builder {
-        // Get the NDK compiler path
-        val ndkDir = toolchain.ndk.path.absolutePath
-        val hostTag = when {
-            System.getProperty("os.name").toLowerCase().contains("windows") -> "windows-x86_64"
-            System.getProperty("os.name").toLowerCase().contains("mac") -> "darwin-x86_64"
-            else -> "linux-x86_64"
-        }
-        val toolchainPath = "${ndkDir}/toolchains/llvm/prebuilt/${hostTag}"
-        val target = when (toolchain.abi.archName) {
-            "arm" -> "armv7a-linux-androideabi${toolchain.api}"
-            "arm64" -> "aarch64-linux-android${toolchain.api}"
-            "x86" -> "i686-linux-android${toolchain.api}"
-            "x86_64" -> "x86_64-linux-android${toolchain.api}"
-            else -> throw GradleException("Unsupported ABI: ${toolchain.abi.archName}")
-        }
-
         run {
             args(
                 sourceDirectory.resolve("Configure").absolutePath,
@@ -129,50 +111,31 @@ tasks.register<AdHocPortTask>("buildPort") {
                 "-D__ANDROID_API__=${toolchain.api}",
                 "--prefix=${installDirectory.absolutePath}",
                 "--openssldir=${installDirectory.absolutePath}",
-                "-D__ANDROID_API__=${toolchain.api}",
-                "--with-zlib-include=${ndkDir}/toolchains/llvm/prebuilt/${hostTag}/sysroot/usr/include",
-                "--with-zlib-lib=${ndkDir}/toolchains/llvm/prebuilt/${hostTag}/sysroot/usr/lib",
-                "no-asm",
-                "no-shared",
                 "no-sctp",
-                "no-tests"
+                "shared"
             )
 
-            env("ANDROID_NDK_ROOT", ndkDir)
-            env("PATH", "${toolchainPath}/bin:${System.getenv("PATH")}")
-            env("CROSS_SYSROOT", "${toolchainPath}/sysroot")
-            env("CC", "${toolchainPath}/bin/clang")
-            env("CXX", "${toolchainPath}/bin/clang++")
-            env("ANDROID_NDK_HOME", ndkDir)
-            env("CROSS_COMPILE", target)
+            env("ANDROID_NDK", toolchain.ndk.path.absolutePath)
+            env("PATH", "${toolchain.binDir}:${System.getenv("PATH")}")
         }
 
         run {
-            args("make", "clean")
-            env("ANDROID_NDK_ROOT", ndkDir)
-            env("PATH", "${toolchainPath}/bin:${System.getenv("PATH")}")
+            args("make", "-j$ncpus", "SHLIB_EXT=.so")
+            env("ANDROID_NDK", toolchain.ndk.path.absolutePath)
+            env("PATH", "${toolchain.binDir}:${System.getenv("PATH")}")
         }
 
         run {
-            args("make", "-j${Runtime.getRuntime().availableProcessors()}")
-            env("ANDROID_NDK_ROOT", ndkDir)
-            env("PATH", "${toolchainPath}/bin:${System.getenv("PATH")}")
-        }
-
-        run {
-            args("make", "install_sw")
-            env("ANDROID_NDK_ROOT", ndkDir)
-            env("PATH", "${toolchainPath}/bin:${System.getenv("PATH")}")
+            args("make", "install_sw", "SHLIB_EXT=.so")
+            env("ANDROID_NDK", toolchain.ndk.path.absolutePath)
+            env("PATH", "${toolchain.binDir}:${System.getenv("PATH")}")
         }
     }
 }
 
-// Prefab package task
 tasks.prefabPackage {
     version.set(CMakeCompatibleVersion.parse(portVersion))
-
     licensePath.set("LICENSE.txt")
-
     modules {
         create("crypto")
         create("ssl")

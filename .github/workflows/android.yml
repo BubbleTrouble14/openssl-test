@@ -19,11 +19,7 @@ jobs:
     timeout-minutes: 60
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Validate Gradle Wrapper
-        uses: gradle/wrapper-validation-action@v2
+      - uses: actions/checkout@v4
 
       - name: Set up JDK ${{ env.JAVA_VERSION }}
         uses: actions/setup-java@v4
@@ -32,115 +28,38 @@ jobs:
           distribution: "temurin"
           cache: "gradle"
 
-      - name: Setup Gradle
-        uses: gradle/gradle-build-action@v3
-        with:
-          gradle-version: ${{ env.GRADLE_VERSION }}
-
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
-
-      - name: NDK Cache
-        uses: actions/cache@v3
-        id: ndk-cache
-        with:
-          path: ${ANDROID_SDK_ROOT}/ndk/${{ env.NDK_VERSION }}
-          key: ${{ runner.os }}-ndk-${{ env.NDK_VERSION }}-v1
-
-      - name: Install NDK
-        if: steps.ndk-cache.outputs.cache-hit != 'true'
+      - name: Setup Android SDK and NDK
         run: |
-          echo "Installing NDK..."
-          yes | sdkmanager --install "ndk;${{ env.NDK_VERSION }}"
+          # Install Android SDK Command-line tools
+          wget -q https://dl.google.com/android/repository/commandlinetools-linux-10406996_latest.zip
+          unzip -q commandlinetools-linux-10406996_latest.zip
+          mkdir -p ${ANDROID_SDK_ROOT}/cmdline-tools
+          mv cmdline-tools ${ANDROID_SDK_ROOT}/cmdline-tools/latest
 
-      - name: Set NDK Path and Environment
-        run: |
+          # Install NDK
+          ${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager --install "ndk;${{ env.NDK_VERSION }}"
+
+          # Set environment variables
           echo "ANDROID_NDK_HOME=${ANDROID_SDK_ROOT}/ndk/${{ env.NDK_VERSION }}" >> $GITHUB_ENV
           echo "ANDROID_NDK_ROOT=${ANDROID_SDK_ROOT}/ndk/${{ env.NDK_VERSION }}" >> $GITHUB_ENV
-
-          # Add NDK toolchain to PATH
-          HOST_TAG="linux-x86_64"
-          TOOLCHAIN_PATH="${ANDROID_SDK_ROOT}/ndk/${{ env.NDK_VERSION }}/toolchains/llvm/prebuilt/${HOST_TAG}/bin"
-          echo "$TOOLCHAIN_PATH" >> $GITHUB_PATH
-
-          # Set cross-compilation environment variables
-          echo "CROSS_SYSROOT=${ANDROID_SDK_ROOT}/ndk/${{ env.NDK_VERSION }}/toolchains/llvm/prebuilt/${HOST_TAG}/sysroot" >> $GITHUB_ENV
-
-          # Verify environment
-          echo "Checking environment setup:"
-          echo "ANDROID_NDK_HOME: $ANDROID_NDK_HOME"
-          echo "ANDROID_NDK_ROOT: $ANDROID_NDK_ROOT"
-          echo "PATH addition: $TOOLCHAIN_PATH"
-          echo "CROSS_SYSROOT: $CROSS_SYSROOT"
-          ls -la "$TOOLCHAIN_PATH"
-
-      - name: Import GPG key
-        uses: crazy-max/ghaction-import-gpg@v6
-        with:
-          gpg_private_key: ${{ secrets.GPG_PRIVATE_KEY }}
-          passphrase: ${{ secrets.GPG_PASSPHRASE }}
-          git_user_signingkey: true
-          git_commit_gpgsign: true
 
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
       - name: Build OpenSSL
         run: |
-          # Verify NDK setup
-          echo "NDK Location: $ANDROID_NDK_HOME"
-          ls -la "$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/"
-
-          # Run build with verbose output
-          ./gradlew buildAll \
-            -PndkPath=${ANDROID_NDK_HOME} \
-            --stacktrace \
-            --info \
-            --no-daemon
-
-      - name: Run Verification
-        run: |
-          ./gradlew verifyOpenSSL \
-            -PndkPath=${ANDROID_NDK_HOME} \
-            --stacktrace \
-            --no-daemon
+          ./gradlew buildAll -PndkPath=$ANDROID_NDK_ROOT --stacktrace
 
       - name: Publish to GitHub Packages
         if: github.event_name == 'release'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          ./gradlew publish \
-            -PndkPath=${ANDROID_NDK_HOME} \
-            --no-daemon
+        run: ./gradlew publish
 
-      - name: Upload Build Reports
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: build-reports
-          path: |
-            **/build/reports/
-            **/build/distributions/
-            **/build/outputs/logs/
-          retention-days: 30
-
-      - name: Upload Release Artifacts
+      - name: Upload Artifacts
         if: github.event_name == 'release'
         uses: softprops/action-gh-release@v1
         with:
-          files: |
-            build/distributions/*.zip
+          files: build/distributions/*.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Upload Build Logs on Failure
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: build-logs
-          path: |
-            **/build/outputs/logs/
-            **/build/reports/
-            **/build/tmp/
-          retention-days: 7
