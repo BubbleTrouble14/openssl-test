@@ -106,6 +106,15 @@ tasks.register<AdHocPortTask>("buildPort") {
     dependsOn("extractSrc")
 
     builder {
+        // Get the NDK compiler path
+        val ndkDir = toolchain.ndk.path.absolutePath
+        val hostTag = when {
+            System.getProperty("os.name").toLowerCase().contains("windows") -> "windows-x86_64"
+            System.getProperty("os.name").toLowerCase().contains("mac") -> "darwin-x86_64"
+            else -> "linux-x86_64"
+        }
+        val toolchainDir = "${ndkDir}/toolchains/llvm/prebuilt/${hostTag}"
+
         run {
             args(
                 sourceDirectory.resolve("Configure").absolutePath,
@@ -117,25 +126,29 @@ tasks.register<AdHocPortTask>("buildPort") {
                 "shared"
             )
 
-            env("ANDROID_NDK", toolchain.ndk.path.absolutePath)
-            env("PATH", "${toolchain.binDir}:${System.getenv("PATH")}")
+            env("ANDROID_NDK_ROOT", ndkDir)
+            env("PATH", "${toolchainDir}/bin:${System.getenv("PATH")}")
+            env("CROSS_SYSROOT", "${toolchainDir}/sysroot")
         }
 
         run {
             args("make", "-j$ncpus", "SHLIB_EXT=.so")
 
-            env("ANDROID_NDK", toolchain.ndk.path.absolutePath)
-            env("PATH", "${toolchain.binDir}:${System.getenv("PATH")}")
+            env("ANDROID_NDK_ROOT", ndkDir)
+            env("PATH", "${toolchainDir}/bin:${System.getenv("PATH")}")
+            env("CROSS_SYSROOT", "${toolchainDir}/sysroot")
         }
 
         run {
             args("make", "install_sw", "SHLIB_EXT=.so")
 
-            env("ANDROID_NDK", toolchain.ndk.path.absolutePath)
-            env("PATH", "${toolchain.binDir}:${System.getenv("PATH")}")
+            env("ANDROID_NDK_ROOT", ndkDir)
+            env("PATH", "${toolchainDir}/bin:${System.getenv("PATH")}")
+            env("CROSS_SYSROOT", "${toolchainDir}/sysroot")
         }
     }
 }
+
 // Prefab package task
 tasks.prefabPackage {
     version.set(CMakeCompatibleVersion.parse(portVersion))

@@ -2,9 +2,9 @@ name: Android CI
 
 on:
   push:
-    branches: [ main, master ]
+    branches: [main, master]
   pull_request:
-    branches: [ main, master ]
+    branches: [main, master]
   release:
     types: [created]
 
@@ -19,93 +19,130 @@ jobs:
     timeout-minutes: 60
 
     steps:
-    - name: Checkout
-      uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
-    - name: Validate Gradle Wrapper
-      uses: gradle/wrapper-validation-action@v2
+      - name: Validate Gradle Wrapper
+        uses: gradle/wrapper-validation-action@v2
 
-    - name: Set up JDK ${{ env.JAVA_VERSION }}
-      uses: actions/setup-java@v4
-      with:
-        java-version: ${{ env.JAVA_VERSION }}
-        distribution: 'temurin'
-        cache: 'gradle'
+      - name: Set up JDK ${{ env.JAVA_VERSION }}
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: "temurin"
+          cache: "gradle"
 
-    - name: Setup Gradle
-      uses: gradle/gradle-build-action@v3
-      with:
-        gradle-version: ${{ env.GRADLE_VERSION }}
+      - name: Setup Gradle
+        uses: gradle/gradle-build-action@v3
+        with:
+          gradle-version: ${{ env.GRADLE_VERSION }}
 
-    - name: Setup Android SDK
-      uses: android-actions/setup-android@v3
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
 
-    - name: NDK Cache
-      uses: actions/cache@v3
-      id: ndk-cache
-      with:
-        path: ${ANDROID_SDK_ROOT}/ndk/${{ env.NDK_VERSION }}
-        key: ${{ runner.os }}-ndk-${{ env.NDK_VERSION }}-v1
+      - name: NDK Cache
+        uses: actions/cache@v3
+        id: ndk-cache
+        with:
+          path: ${ANDROID_SDK_ROOT}/ndk/${{ env.NDK_VERSION }}
+          key: ${{ runner.os }}-ndk-${{ env.NDK_VERSION }}-v1
 
-    - name: Install NDK
-      if: steps.ndk-cache.outputs.cache-hit != 'true'
-      run: |
-        echo "Installing NDK..."
-        yes | sdkmanager --install "ndk;${{ env.NDK_VERSION }}"
+      - name: Install NDK
+        if: steps.ndk-cache.outputs.cache-hit != 'true'
+        run: |
+          echo "Installing NDK..."
+          yes | sdkmanager --install "ndk;${{ env.NDK_VERSION }}"
 
-    - name: Set NDK Path
-      run: |
-        echo "ANDROID_NDK_HOME=${ANDROID_SDK_ROOT}/ndk/${{ env.NDK_VERSION }}" >> $GITHUB_ENV
+      - name: Set NDK Path and Environment
+        run: |
+          echo "ANDROID_NDK_HOME=${ANDROID_SDK_ROOT}/ndk/${{ env.NDK_VERSION }}" >> $GITHUB_ENV
+          echo "ANDROID_NDK_ROOT=${ANDROID_SDK_ROOT}/ndk/${{ env.NDK_VERSION }}" >> $GITHUB_ENV
 
-    - name: Import GPG key
-      uses: crazy-max/ghaction-import-gpg@v6
-      with:
-        gpg_private_key: ${{ secrets.GPG_PRIVATE_KEY }}
-        passphrase: ${{ secrets.GPG_PASSPHRASE }}
-        git_user_signingkey: true
-        git_commit_gpgsign: true
+          # Add NDK toolchain to PATH
+          HOST_TAG="linux-x86_64"
+          TOOLCHAIN_PATH="${ANDROID_SDK_ROOT}/ndk/${{ env.NDK_VERSION }}/toolchains/llvm/prebuilt/${HOST_TAG}/bin"
+          echo "$TOOLCHAIN_PATH" >> $GITHUB_PATH
 
-    - name: Grant execute permission for gradlew
-      run: chmod +x gradlew
+          # Set cross-compilation environment variables
+          echo "CROSS_SYSROOT=${ANDROID_SDK_ROOT}/ndk/${{ env.NDK_VERSION }}/toolchains/llvm/prebuilt/${HOST_TAG}/sysroot" >> $GITHUB_ENV
 
-    - name: Build OpenSSL
-      run: |
-        ./gradlew buildAll \
-          -PndkPath=${ANDROID_NDK_HOME} \
-          --stacktrace \
-          --no-daemon
+          # Verify environment
+          echo "Checking environment setup:"
+          echo "ANDROID_NDK_HOME: $ANDROID_NDK_HOME"
+          echo "ANDROID_NDK_ROOT: $ANDROID_NDK_ROOT"
+          echo "PATH addition: $TOOLCHAIN_PATH"
+          echo "CROSS_SYSROOT: $CROSS_SYSROOT"
+          ls -la "$TOOLCHAIN_PATH"
 
-    - name: Run Verification
-      run: |
-        ./gradlew verifyOpenSSL \
-          -PndkPath=${ANDROID_NDK_HOME} \
-          --stacktrace \
-          --no-daemon
+      - name: Import GPG key
+        uses: crazy-max/ghaction-import-gpg@v6
+        with:
+          gpg_private_key: ${{ secrets.GPG_PRIVATE_KEY }}
+          passphrase: ${{ secrets.GPG_PASSPHRASE }}
+          git_user_signingkey: true
+          git_commit_gpgsign: true
 
-    - name: Publish to GitHub Packages
-      if: github.event_name == 'release'
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      run: |
-        ./gradlew publish \
-          -PndkPath=${ANDROID_NDK_HOME} \
-          --no-daemon
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
 
-    - name: Upload Build Reports
-      if: always()
-      uses: actions/upload-artifact@v4
-      with:
-        name: build-reports
-        path: |
-          **/build/reports/
-          **/build/distributions/
-        retention-days: 30
+      - name: Build OpenSSL
+        run: |
+          # Verify NDK setup
+          echo "NDK Location: $ANDROID_NDK_HOME"
+          echo "Tools in PATH:"
+          which aarch64-linux-android-gcc || true
+          which arm-linux-androideabi-gcc || true
 
-    - name: Upload Release Artifacts
-      if: github.event_name == 'release'
-      uses: softprops/action-gh-release@v1
-      with:
-        files: |
-          build/distributions/*.zip
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Run build with verbose output
+          ./gradlew buildAll \
+            -PndkPath=${ANDROID_NDK_HOME} \
+            --stacktrace \
+            --info \
+            --no-daemon
+
+      - name: Run Verification
+        run: |
+          ./gradlew verifyOpenSSL \
+            -PndkPath=${ANDROID_NDK_HOME} \
+            --stacktrace \
+            --no-daemon
+
+      - name: Publish to GitHub Packages
+        if: github.event_name == 'release'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          ./gradlew publish \
+            -PndkPath=${ANDROID_NDK_HOME} \
+            --no-daemon
+
+      - name: Upload Build Reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-reports
+          path: |
+            **/build/reports/
+            **/build/distributions/
+            **/build/outputs/logs/
+          retention-days: 30
+
+      - name: Upload Release Artifacts
+        if: github.event_name == 'release'
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            build/distributions/*.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload Build Logs on Failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-logs
+          path: |
+            **/build/outputs/logs/
+            **/build/reports/
+            **/build/tmp/
+          retention-days: 7
