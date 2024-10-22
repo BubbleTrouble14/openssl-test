@@ -89,9 +89,7 @@ jobs:
         run: |
           # Verify NDK setup
           echo "NDK Location: $ANDROID_NDK_HOME"
-          echo "Tools in PATH:"
-          which aarch64-linux-android-gcc || true
-          which arm-linux-androideabi-gcc || true
+          ls -la "$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/"
 
           # Run build with verbose output
           ./gradlew buildAll \

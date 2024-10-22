@@ -113,7 +113,14 @@ tasks.register<AdHocPortTask>("buildPort") {
             System.getProperty("os.name").toLowerCase().contains("mac") -> "darwin-x86_64"
             else -> "linux-x86_64"
         }
-        val toolchainDir = "${ndkDir}/toolchains/llvm/prebuilt/${hostTag}"
+        val toolchainPath = "${ndkDir}/toolchains/llvm/prebuilt/${hostTag}"
+        val target = when (toolchain.abi) {
+            Abi.ARM -> "armv7a-linux-androideabi${toolchain.api}"
+            Abi.ARM64 -> "aarch64-linux-android${toolchain.api}"
+            Abi.X86 -> "i686-linux-android${toolchain.api}"
+            Abi.X86_64 -> "x86_64-linux-android${toolchain.api}"
+            else -> throw GradleException("Unsupported ABI: ${toolchain.abi}")
+        }
 
         run {
             args(
@@ -122,29 +129,48 @@ tasks.register<AdHocPortTask>("buildPort") {
                 "-D__ANDROID_API__=${toolchain.api}",
                 "--prefix=${installDirectory.absolutePath}",
                 "--openssldir=${installDirectory.absolutePath}",
+                "-D__ANDROID_API__=${toolchain.api}",
+                "--with-zlib-include=${ndkDir}/toolchains/llvm/prebuilt/${hostTag}/sysroot/usr/include",
+                "--with-zlib-lib=${ndkDir}/toolchains/llvm/prebuilt/${hostTag}/sysroot/usr/lib",
+                "no-asm",
+                "no-shared",
                 "no-sctp",
-                "shared"
+                "no-tests"
             )
 
-            env("ANDROID_NDK_ROOT", ndkDir)
-            env("PATH", "${toolchainDir}/bin:${System.getenv("PATH")}")
-            env("CROSS_SYSROOT", "${toolchainDir}/sysroot")
+            environment(mapOf(
+                "ANDROID_NDK_ROOT" to ndkDir,
+                "PATH" to "${toolchainPath}/bin:${System.getenv("PATH")}",
+                "CROSS_SYSROOT" to "${toolchainPath}/sysroot",
+                "CC" to "${toolchainPath}/bin/clang",
+                "CXX" to "${toolchainPath}/bin/clang++",
+                "ANDROID_NDK_HOME" to ndkDir,
+                "CROSS_COMPILE" to target
+            ))
         }
 
         run {
-            args("make", "-j$ncpus", "SHLIB_EXT=.so")
-
-            env("ANDROID_NDK_ROOT", ndkDir)
-            env("PATH", "${toolchainDir}/bin:${System.getenv("PATH")}")
-            env("CROSS_SYSROOT", "${toolchainDir}/sysroot")
+            args("make", "clean")
+            environment(mapOf(
+                "ANDROID_NDK_ROOT" to ndkDir,
+                "PATH" to "${toolchainPath}/bin:${System.getenv("PATH")}"
+            ))
         }
 
         run {
-            args("make", "install_sw", "SHLIB_EXT=.so")
+            args("make", "-j${Runtime.getRuntime().availableProcessors()}")
+            environment(mapOf(
+                "ANDROID_NDK_ROOT" to ndkDir,
+                "PATH" to "${toolchainPath}/bin:${System.getenv("PATH")}"
+            ))
+        }
 
-            env("ANDROID_NDK_ROOT", ndkDir)
-            env("PATH", "${toolchainDir}/bin:${System.getenv("PATH")}")
-            env("CROSS_SYSROOT", "${toolchainDir}/sysroot")
+        run {
+            args("make", "install_sw")
+            environment(mapOf(
+                "ANDROID_NDK_ROOT" to ndkDir,
+                "PATH" to "${toolchainPath}/bin:${System.getenv("PATH")}"
+            ))
         }
     }
 }
