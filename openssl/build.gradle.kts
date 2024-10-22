@@ -114,12 +114,12 @@ tasks.register<AdHocPortTask>("buildPort") {
             else -> "linux-x86_64"
         }
         val toolchainPath = "${ndkDir}/toolchains/llvm/prebuilt/${hostTag}"
-        val target = when (toolchain.abi) {
-            Abi.ARM -> "armv7a-linux-androideabi${toolchain.api}"
-            Abi.ARM64 -> "aarch64-linux-android${toolchain.api}"
-            Abi.X86 -> "i686-linux-android${toolchain.api}"
-            Abi.X86_64 -> "x86_64-linux-android${toolchain.api}"
-            else -> throw GradleException("Unsupported ABI: ${toolchain.abi}")
+        val target = when (toolchain.abi.archName) {
+            "arm" -> "armv7a-linux-androideabi${toolchain.api}"
+            "arm64" -> "aarch64-linux-android${toolchain.api}"
+            "x86" -> "i686-linux-android${toolchain.api}"
+            "x86_64" -> "x86_64-linux-android${toolchain.api}"
+            else -> throw GradleException("Unsupported ABI: ${toolchain.abi.archName}")
         }
 
         run {
@@ -138,39 +138,31 @@ tasks.register<AdHocPortTask>("buildPort") {
                 "no-tests"
             )
 
-            environment(mapOf(
-                "ANDROID_NDK_ROOT" to ndkDir,
-                "PATH" to "${toolchainPath}/bin:${System.getenv("PATH")}",
-                "CROSS_SYSROOT" to "${toolchainPath}/sysroot",
-                "CC" to "${toolchainPath}/bin/clang",
-                "CXX" to "${toolchainPath}/bin/clang++",
-                "ANDROID_NDK_HOME" to ndkDir,
-                "CROSS_COMPILE" to target
-            ))
+            env("ANDROID_NDK_ROOT", ndkDir)
+            env("PATH", "${toolchainPath}/bin:${System.getenv("PATH")}")
+            env("CROSS_SYSROOT", "${toolchainPath}/sysroot")
+            env("CC", "${toolchainPath}/bin/clang")
+            env("CXX", "${toolchainPath}/bin/clang++")
+            env("ANDROID_NDK_HOME", ndkDir)
+            env("CROSS_COMPILE", target)
         }
 
         run {
             args("make", "clean")
-            environment(mapOf(
-                "ANDROID_NDK_ROOT" to ndkDir,
-                "PATH" to "${toolchainPath}/bin:${System.getenv("PATH")}"
-            ))
+            env("ANDROID_NDK_ROOT", ndkDir)
+            env("PATH", "${toolchainPath}/bin:${System.getenv("PATH")}")
         }
 
         run {
             args("make", "-j${Runtime.getRuntime().availableProcessors()}")
-            environment(mapOf(
-                "ANDROID_NDK_ROOT" to ndkDir,
-                "PATH" to "${toolchainPath}/bin:${System.getenv("PATH")}"
-            ))
+            env("ANDROID_NDK_ROOT", ndkDir)
+            env("PATH", "${toolchainPath}/bin:${System.getenv("PATH")}")
         }
 
         run {
             args("make", "install_sw")
-            environment(mapOf(
-                "ANDROID_NDK_ROOT" to ndkDir,
-                "PATH" to "${toolchainPath}/bin:${System.getenv("PATH")}"
-            ))
+            env("ANDROID_NDK_ROOT", ndkDir)
+            env("PATH", "${toolchainPath}/bin:${System.getenv("PATH")}")
         }
     }
 }
