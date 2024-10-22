@@ -54,7 +54,7 @@ jobs:
         if: github.event_name == 'release'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: ./gradlew publish
+        run: ./gradlew publish -PndkPath=$ANDROID_NDK_ROOT --stacktrace
 
       - name: Upload Artifacts
         if: github.event_name == 'release'

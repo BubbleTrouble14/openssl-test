@@ -70,6 +70,7 @@ tasks.register<DefaultTask>("verifyOpenSSL") {
     doLast {
         val sourceFile = project.file("src.tar.gz")
         val sha256File = project.file("openssl.sha256")
+        val ascFile = project.file("openssl.asc")
 
         // Read expected SHA256
         val expectedHash = sha256File.readText().trim().split(" ")[0]
@@ -83,17 +84,30 @@ tasks.register<DefaultTask>("verifyOpenSSL") {
         // Verify hash
         if (expectedHash != actualHash) {
             throw GradleException("SHA256 verification failed! Expected: $expectedHash, Got: $actualHash")
+        } else {
+            println("SHA256 verification succeeded.")
         }
 
-        try {
-            exec {
-                commandLine("gpg", "--verify", "openssl.asc", "src.tar.gz")
-            }
-        } catch (e: Exception) {
-            logger.warn("GPG verification skipped or failed. Please verify manually if needed.")
+        // Import OpenSSL PGP key first
+        exec {
+            commandLine(
+                "gpg",
+                "--keyserver",
+                "keyserver.ubuntu.com",
+                "--recv-keys",
+                "BA5473A2B0587B07FB27CF2D216094DFD0CB81EF"  // OpenSSL release signing key
+            )
         }
+
+        // Verify the signature
+        exec {
+            commandLine("gpg", "--verify", ascFile.absolutePath, sourceFile.absolutePath)
+        }
+
+        println("GPG signature verification succeeded.")
     }
 }
+
 
 // Make extractSrc task depend on verifyOpenSSL
 tasks.named("extractSrc") {
