@@ -16,6 +16,9 @@ env:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions: # Add this section
+      contents: read
+      packages: write
     timeout-minutes: 60
 
     steps:
@@ -54,7 +57,7 @@ jobs:
         if: github.event_name == 'release'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: ./gradlew publish -PndkPath=$ANDROID_NDK_ROOT --stacktrace
+        run: ./gradlew publish -PndkPath=$ANDROID_NDK_ROOT --stacktrace --info
 
       - name: Upload Artifacts
         if: github.event_name == 'release'

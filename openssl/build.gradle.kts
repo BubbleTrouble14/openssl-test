@@ -11,7 +11,7 @@ val opensslDownloadUrl = "https://github.com/openssl/openssl/releases/download/o
 val opensslSha256Url = "${opensslDownloadUrl}.sha256"
 val opensslAscUrl = "${opensslDownloadUrl}.asc"
 
-group = "com.android.ndk.thirdparty"
+group = "com.github.BubbleTrouble14"
 version = "$portVersion${rootProject.extra.get("snapshotSuffix")}"
 
 plugins {
