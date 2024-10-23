@@ -1,0 +1,148 @@
+name: Build NDK Ports
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "**/build.gradle.kts"
+      - "settings.gradle.kts"
+      - "**/src/**"
+  pull_request:
+    branches: [main]
+    paths:
+      - "**/build.gradle.kts"
+      - "settings.gradle.kts"
+      - "**/src/**"
+  workflow_dispatch:
+
+jobs:
+  detect-changes:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 2
+
+      - name: Get changed files
+        id: changed-files
+        uses: tj-actions/changed-files@v41
+        with:
+          files: |
+            **/build.gradle.kts
+            settings.gradle.kts
+            **/src/**
+
+      - name: Determine projects to build
+        id: set-matrix
+        run: |
+          # Initialize array for all projects that need building
+          projects=()
+
+          # Check settings.gradle.kts changes
+          if echo "${{ steps.changed-files.outputs.all_changed_files }}" | grep -q "settings.gradle.kts"; then
+            # If settings file changed, get all enabled projects
+            while IFS= read -r line; do
+              if [[ $line =~ include\("([^"]+)"\) ]]; then
+                project="${BASH_REMATCH[1]}"
+                if [[ $project != "//" ]]; then  # Exclude commented projects
+                  projects+=("$project")
+                fi
+              fi
+            done < settings.gradle.kts
+          else
+            # Otherwise, only include projects with changes
+            for file in ${{ steps.changed-files.outputs.all_changed_files }}; do
+              project=$(echo $file | cut -d'/' -f1)
+              if [ -f "$project/build.gradle.kts" ] && [[ ! " ${projects[@]} " =~ " ${project} " ]]; then
+                projects+=("$project")
+              fi
+            done
+          fi
+
+          # Convert to JSON array for matrix
+          json_array=$(printf '%s\n' "${projects[@]}" | jq -R . | jq -s .)
+          echo "matrix={\"project\":$json_array}" >> $GITHUB_OUTPUT
+
+  build:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.matrix != '{\"project\":[]}'
+    runs-on: ubuntu-latest
+    strategy:
+      matrix: ${{fromJson(needs.detect-changes.outputs.matrix)}}
+      fail-fast: false
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up JDK
+        uses: actions/setup-java@v3
+        with:
+          java-version: "17"
+          distribution: "temurin"
+
+      - name: Cache NDK
+        uses: actions/cache@v3
+        with:
+          path: |
+            ${{ github.workspace }}/android-ndk-r26
+          key: ${{ runner.os }}-ndk-r26
+
+      - name: Download Android NDK
+        if: steps.cache-ndk.outputs.cache-hit != 'true'
+        run: |
+          wget https://dl.google.com/android/repository/android-ndk-r26-linux.zip
+          unzip android-ndk-r26-linux.zip
+          rm android-ndk-r26-linux.zip
+
+      - name: Cache Gradle packages
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-${{ matrix.project }}-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-${{ matrix.project }}-
+
+      - name: Cache build artifacts
+        uses: actions/cache@v3
+        with:
+          path: ${{ matrix.project }}/build
+          key: ${{ runner.os }}-build-${{ matrix.project }}-${{ hashFiles(format('{0}/**', matrix.project)) }}
+          restore-keys: |
+            ${{ runner.os }}-build-${{ matrix.project }}-
+
+      - name: Build ${{ matrix.project }}
+        run: |
+          ./gradlew :${{ matrix.project }}:build -PndkPath=${{ github.workspace }}/android-ndk-r26
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: ${{ matrix.project }}-artifacts
+          path: ${{ matrix.project }}/build/distributions/*.zip
+          if-no-files-found: error
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v3
+        with:
+          path: artifacts
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: artifacts/**/*.zip
+          tag_name: ${{ github.sha }}
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
