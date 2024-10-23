@@ -3,10 +3,10 @@ name: Build NDK Ports
 on:
   push:
     branches: [main]
-    paths:
-      - "**/build.gradle.kts"
-      - "settings.gradle.kts"
-      - "**/src/**"
+    # paths:
+    #   - "**/build.gradle.kts"
+    #   - "settings.gradle.kts"
+    #   - "**/src/**"
   pull_request:
     branches: [main]
   workflow_dispatch:
