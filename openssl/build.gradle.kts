@@ -202,34 +202,9 @@ publishing {
 
 // Configure signing
 signing {
+    useGpgCmd()
     sign(publishing.publications["maven"])
 }
-
-// // Task to generate ASCII-armored signatures for distribution files
-// tasks.register("signDistributionFiles") {
-//     dependsOn("publish")
-
-//     doLast {
-//         fileTree(project.buildDir.resolve("repository")) {
-//             include("**/*.aar")
-//             include("**/*.pom")
-//             include("**/*.module")
-//         }.forEach { file ->
-//             exec {
-//                 commandLine(
-//                     "gpg",
-//                     "--pinentry-mode",
-//                     "loopback",
-//                     "--armor",
-//                     "--detach-sign",
-//                     "--output",
-//                     "${file.absolutePath}.asc",
-//                     file.absolutePath
-//                 )
-//             }
-//         }
-//     }
-// }
 
 distributions {
     main {
