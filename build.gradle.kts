@@ -1,7 +1,5 @@
 buildscript {
     val snapshotSuffix = if (hasProperty("release")) {
-        // We're still tagging releases as betas until we have more thorough
-        // test automation.
         "-beta-1"
     } else {
         "-SNAPSHOT"
@@ -10,17 +8,32 @@ buildscript {
     extra.apply {
         set("snapshotSuffix", snapshotSuffix)
     }
+
+    repositories {
+        mavenCentral()
+        google()
+        gradlePluginPortal()
+    }
+
+    // Add jreleaser to buildscript classpath for Gradle 7.5
+    dependencies {
+        classpath("org.jreleaser:jreleaser-gradle-plugin:1.14.0")  // Use older version compatible with Gradle 7.5
+    }
 }
 
 group = "com.android"
 version = "1.0.0${extra.get("snapshotSuffix")}"
 
-repositories {
-    mavenCentral()
-    google()
+allprojects {
+    repositories {
+        mavenCentral()
+        google()
+        gradlePluginPortal()
+    }
 }
 
 tasks.register("release") {
-    // dependsOn(project.getTasksByName("test", true))
     dependsOn(project.getTasksByName("distZip", true))
+    dependsOn(project.getTasksByName("publish", true))
+    finalizedBy(project.getTasksByName("jreleaserFullRelease", true))
 }

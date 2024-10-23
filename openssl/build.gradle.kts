@@ -5,6 +5,7 @@ import java.net.URL
 import java.security.MessageDigest
 import org.gradle.api.DefaultTask
 import org.gradle.api.GradleException
+import org.jreleaser.model.Active
 
 val portVersion = "3.4.0"
 val opensslDownloadUrl = "https://github.com/openssl/openssl/releases/download/openssl-${portVersion}/openssl-${portVersion}.tar.gz"
@@ -16,6 +17,7 @@ version = "$portVersion${rootProject.extra.get("snapshotSuffix")}"
 
 plugins {
     id("maven-publish")
+    id("org.jreleaser")
     id("com.android.ndkports.NdkPorts")
     distribution
 }
@@ -169,12 +171,12 @@ tasks.register<DefaultTask>("buildAll") {
 
 publishing {
     publications {
-        create<MavenPublication>("gpr") {
+        create<MavenPublication>("maven") {
             from(components["prefab"])
             pom {
                 name.set("OpenSSL")
                 description.set("The ndkports AAR for OpenSSL.")
-                url.set("https://github.com/${System.getenv("GITHUB_REPOSITORY")}")
+                url.set("https://github.com/BubbleTrouble14/openssl-test")
                 licenses {
                     license {
                         name.set("Dual OpenSSL and SSLeay License")
@@ -184,13 +186,15 @@ publishing {
                 }
                 developers {
                     developer {
-                        name.set("The Android Open Source Project")
+                        id.set("BubbleTrouble14")
+                        name.set("Your Name")
+                        email.set("your.email@example.com")
                     }
                 }
                 scm {
-                    val repoUrl = "https://github.com/${System.getenv("GITHUB_REPOSITORY")}"
-                    url.set(repoUrl)
-                    connection.set("scm:git:$repoUrl.git")
+                    connection.set("scm:git:git://github.com/BubbleTrouble14/openssl-test.git")
+                    developerConnection.set("scm:git:ssh://github.com/BubbleTrouble14/openssl-test.git")
+                    url.set("https://github.com/BubbleTrouble14/openssl-test")
                 }
             }
         }
@@ -198,29 +202,62 @@ publishing {
 
     repositories {
         maven {
-            name = "GitHubPackages"
-            url = uri("https://maven.pkg.github.com/${System.getenv("GITHUB_REPOSITORY")}")
-            credentials {
-                username = System.getenv("GITHUB_ACTOR")
-                password = System.getenv("GITHUB_TOKEN")
+            name = "stagingLocal"
+            url = uri("${layout.buildDirectory.get()}/repository")
+        }
+    }
+}
+
+
+jreleaser {
+    project {
+        name.set("openssl")
+        version.set(version.toString())
+    }
+
+    signing {
+        active = Active.ALWAYS
+        armored = true
+    }
+
+    deploy {
+        maven {
+            mavenCentral {
+                create("sonatype") {
+                    active = Active.ALWAYS
+                    url = "https://central.sonatype.com/api/v1/publisher"
+                    stagingRepositories.add("${layout.buildDirectory.get()}/staging-deploy")
+                }
             }
         }
     }
 }
 
+// Update the publishing repository path to match JReleaser's expected path
+publishing {
+    repositories {
+        maven {
+            name = "stagingLocal"
+            url = uri("${layout.buildDirectory.get()}/staging-deploy")
+        }
+    }
+}
+
+// Update distributions to use the same path
 distributions {
     main {
         contents {
-            from("${project.buildDir}/repository")
+            from("${layout.buildDirectory.get()}/staging-deploy")
             include("**/*.aar")
             include("**/*.pom")
         }
     }
 }
 
-tasks {
-    distZip {
-        dependsOn("publish")
-        destinationDirectory.set(File(rootProject.buildDir, "distributions"))
+// Add a staging task
+tasks.register("prepareRelease") {
+    dependsOn("buildAll", "publish")
+    doLast {
+        println("Release artifacts prepared in ${layout.buildDirectory.get()}/staging-deploy")
     }
 }
