@@ -3,10 +3,6 @@ name: Build NDK Ports
 on:
   push:
     branches: [main]
-    # paths:
-    #   - "**/build.gradle.kts"
-    #   - "settings.gradle.kts"
-    #   - "**/src/**"
   pull_request:
     branches: [main]
   workflow_dispatch:
@@ -19,16 +15,26 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
+      - name: Setup Gradle Cache
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-detect-${{ runner.os }}-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          restore-keys: |
+            gradle-detect-${{ runner.os }}-
+
       - name: Set up JDK
         uses: actions/setup-java@v3
         with:
           java-version: "17"
           distribution: "temurin"
+          cache: "gradle" # Enables built-in Gradle caching
 
       - name: Get all projects
         id: set-matrix
         run: |
-          # Get list of all projects
           projects=$(./gradlew -q listProjects)
           echo "Found projects: $projects"
           echo "matrix={\"project\":$projects}" >> $GITHUB_OUTPUT
@@ -43,18 +49,46 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
+      # Cache Ubuntu packages
+      - name: Cache APT packages
+        uses: actions/cache@v3
+        with:
+          path: /var/cache/apt/archives
+          key: ${{ runner.os }}-apt-${{ hashFiles('**/package-list') }}
+          restore-keys: |
+            ${{ runner.os }}-apt-
+
+      # Cache Gradle files
+      - name: Setup Gradle Cache
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+            ~/.gradle/native
+            ~/.gradle/daemon
+            ~/.gradle/buildOutputCleanup
+          key: gradle-build-${{ runner.os }}-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          restore-keys: |
+            gradle-build-${{ runner.os }}-
+
+      # Set up JDK with Gradle caching
       - name: Set up JDK
         uses: actions/setup-java@v3
         with:
           java-version: "17"
           distribution: "temurin"
+          cache: "gradle"
 
+      # Cache NDK
       - name: Cache NDK
+        id: cache-ndk
         uses: actions/cache@v3
         with:
           path: |
             ${{ github.workspace }}/android-ndk-r26
-          key: ${{ runner.os }}-ndk-r26
+            ~/.android/ndk
+          key: ${{ runner.os }}-ndk-r26-${{ hashFiles('**/ndk.hash') }}
 
       - name: Download Android NDK
         if: steps.cache-ndk.outputs.cache-hit != 'true'
@@ -62,16 +96,29 @@ jobs:
           wget https://dl.google.com/android/repository/android-ndk-r26-linux.zip
           unzip android-ndk-r26-linux.zip
           rm android-ndk-r26-linux.zip
+          # Create hash file for cache key
+          echo "r26" > ndk.hash
+
+      # Cache build outputs
+      - name: Cache Build Outputs
+        uses: actions/cache@v3
+        with:
+          path: |
+            **/build
+            !**/build/distributions
+          key: ${{ runner.os }}-build-${{ matrix.project }}-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-build-${{ matrix.project }}-
 
       - name: Build ${{ matrix.project }}
         run: |
-          ./gradlew :${{ matrix.project }}:release -PndkPath=${{ github.workspace }}/android-ndk-r26 -Prelease
+          ./gradlew :${{ matrix.project }}:distZip -PndkPath=${{ github.workspace }}/android-ndk-r26 -Prelease --no-daemon
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v3
         with:
           name: ${{ matrix.project }}-artifacts
-          path: ${{ matrix.project }}/build/distributions/*.zip
+          path: ${{ github.workspace }}/build/distributions/*.zip
           if-no-files-found: error
 
   publish:
