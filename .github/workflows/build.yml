@@ -65,7 +65,7 @@ jobs:
 
       - name: Build ${{ matrix.project }}
         run: |
-          ./gradlew :${{ matrix.project }}:build -PndkPath=${{ github.workspace }}/android-ndk-r26
+          ./gradlew :${{ matrix.project }}:distZip -PndkPath=${{ github.workspace }}/android-ndk-r26 -Prelease release
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v3
