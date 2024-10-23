@@ -23,25 +23,25 @@ jobs:
       - name: Get version
         id: get_version
         run: |
-          VERSION=$(grep "val portVersion =" build.gradle.kts | cut -d'"' -f2)
+          VERSION=$(grep "val portVersion = " openssl/build.gradle.kts | sed 's/.*"\(.*\)".*/\1/')
+          if [[ -z "$VERSION" ]]; then
+            echo "Failed to extract version"
+            echo "Content of openssl/build.gradle.kts:"
+            cat openssl/build.gradle.kts | grep -A 1 -B 1 "portVersion"
+            exit 1
+          fi
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "Detected version: $VERSION"
 
       - name: Set release names
         id: set_names
         run: |
-          VERSION="${{ steps.get_version.outputs.version }}"
-          if [[ -z "$VERSION" ]]; then
-            echo "Error: Version is empty"
-            exit 1
-          fi
-
           if [[ "${{ github.ref }}" == "refs/heads/staging" ]]; then
-            echo "release_name=openssl-${VERSION}-beta-1" >> $GITHUB_OUTPUT
-            echo "artifact_base=openssl-${VERSION}-beta-1" >> $GITHUB_OUTPUT
+            echo "release_name=openssl-${{ steps.get_version.outputs.version }}-beta-1" >> $GITHUB_OUTPUT
+            echo "artifact_base=openssl-${{ steps.get_version.outputs.version }}-beta-1" >> $GITHUB_OUTPUT
           else
-            echo "release_name=openssl-${VERSION}" >> $GITHUB_OUTPUT
-            echo "artifact_base=openssl-${VERSION}" >> $GITHUB_OUTPUT
+            echo "release_name=openssl-${{ steps.get_version.outputs.version }}" >> $GITHUB_OUTPUT
+            echo "artifact_base=openssl-${{ steps.get_version.outputs.version }}" >> $GITHUB_OUTPUT
           fi
 
       - name: Set up JDK
