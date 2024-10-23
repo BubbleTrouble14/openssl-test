@@ -43,31 +43,33 @@ jobs:
           echo "${{ steps.changed-files.outputs.all_changed_files }}"
 
           echo "Running listProjects:"
-          ./gradlew -q listProjects
+          # Store projects list
+          projects_list=$(./gradlew -q listProjects)
+          echo "Found projects: $projects_list"
 
           if echo "${{ steps.changed-files.outputs.all_changed_files }}" | grep -q "settings.gradle.kts"; then
-            echo "Settings changed, getting all projects"
-            projects=$(./gradlew -q listProjects)
+            echo "Settings changed, using all projects"
+            projects=$projects_list
           else
             echo "Getting projects with changes"
-            # Get all available projects
-            all_projects=$(./gradlew -q listProjects | jq -r '.[]')
+            # Get array of projects (already in JSON format)
+            all_projects=$projects_list
 
-            echo "All available projects:"
-            echo "$all_projects"
+            echo "All available projects: $all_projects"
 
             # Filter projects with changes
             projects="["
             first=true
-            for project in $all_projects; do
+            for project in $(echo "$all_projects" | jq -r '.[]'); do
               echo "Checking project: $project"
-              if echo "${{ steps.changed-files.outputs.all_changed_files }}" | grep -q "^$project/"; then
+              if echo "${{ steps.changed-files.outputs.all_changed_files }}" | grep -q "^$project/\|^build.gradle.kts"; then
                 if [ "$first" = true ]; then
                   first=false
                 else
                   projects="$projects,"
                 fi
                 projects="$projects\"$project\""
+                echo "Added project to build: $project"
               fi
             done
             projects="$projects]"
@@ -77,9 +79,6 @@ jobs:
           echo "$projects"
 
           echo "matrix={\"project\":$projects}" >> $GITHUB_OUTPUT
-
-          # Also output the matrix for verification
-          cat $GITHUB_OUTPUT
 
   build:
     needs: detect-changes
