@@ -39,17 +39,28 @@ jobs:
       - name: Determine projects to build
         id: set-matrix
         run: |
+          echo "Changed files:"
+          echo "${{ steps.changed-files.outputs.all_changed_files }}"
+
+          echo "Running listProjects:"
+          ./gradlew -q listProjects
+
           if echo "${{ steps.changed-files.outputs.all_changed_files }}" | grep -q "settings.gradle.kts"; then
-            # If settings.gradle.kts changed, build all projects
+            echo "Settings changed, getting all projects"
             projects=$(./gradlew -q listProjects)
           else
+            echo "Getting projects with changes"
             # Get all available projects
             all_projects=$(./gradlew -q listProjects | jq -r '.[]')
+
+            echo "All available projects:"
+            echo "$all_projects"
 
             # Filter projects with changes
             projects="["
             first=true
             for project in $all_projects; do
+              echo "Checking project: $project"
               if echo "${{ steps.changed-files.outputs.all_changed_files }}" | grep -q "^$project/"; then
                 if [ "$first" = true ]; then
                   first=false
@@ -62,7 +73,13 @@ jobs:
             projects="$projects]"
           fi
 
+          echo "Final projects matrix:"
+          echo "$projects"
+
           echo "matrix={\"project\":$projects}" >> $GITHUB_OUTPUT
+
+          # Also output the matrix for verification
+          cat $GITHUB_OUTPUT
 
   build:
     needs: detect-changes
