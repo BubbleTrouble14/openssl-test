@@ -51,7 +51,7 @@ jobs:
 
       - name: Build OpenSSL
         run: |
-          ./gradlew buildAll -PndkPath=$ANDROID_NDK_ROOT --stacktrace
+          ./gradlew -PndkPath=$ANDROID_NDK_ROOT  -Prelease release --stacktrace
 
       - name: Publish to GitHub Packages
         if: github.event_name == 'release'
