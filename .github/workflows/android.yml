@@ -13,12 +13,13 @@ env:
   NDK_VERSION: 26.1.10909125
   GRADLE_VERSION: 8.4
 
+permissions: # Move this to root level
+  contents: read
+  packages: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
-    permissions: # Add this section
-      contents: read
-      packages: write
     timeout-minutes: 60
 
     steps:
@@ -50,14 +51,18 @@ jobs:
         run: chmod +x gradlew
 
       - name: Build OpenSSL
+        if: github.event_name != 'release'
         run: |
-          ./gradlew -PndkPath=$ANDROID_NDK_ROOT  -Prelease release --stacktrace
+          ./gradlew -PndkPath=$ANDROID_NDK_ROOT build --stacktrace
 
-      - name: Publish to GitHub Packages
+      - name: Build and Publish OpenSSL
         if: github.event_name == 'release'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: ./gradlew publish -PndkPath=$ANDROID_NDK_ROOT --stacktrace --info
+          GITHUB_ACTOR: ${{ github.actor }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          ./gradlew -PndkPath=$ANDROID_NDK_ROOT -Prelease release --stacktrace --info
 
       - name: Upload Artifacts
         if: github.event_name == 'release'
