@@ -77,7 +77,6 @@ jobs:
 
           echo "Final projects matrix:"
           echo "$projects"
-
           echo "matrix={\"project\":$projects}" >> $GITHUB_OUTPUT
 
   build:
