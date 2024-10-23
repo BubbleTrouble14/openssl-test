@@ -27,13 +27,7 @@ tasks.register("release") {
 
 tasks.register("listProjects") {
     doLast {
-        println("Found ${subprojects.size} subprojects:")
-        subprojects.forEach {
-            println("Project: ${it.name}")
-        }
-        // Output as JSON array
-        val projectsJson = "[" + subprojects.joinToString(",") { "\"${it.name}\"" } + "]"
-        println("JSON output:")
-        println(projectsJson)
+        // Only output the JSON array, nothing else
+        println("[" + subprojects.joinToString(",") { "\"${it.name}\"" } + "]")
     }
 }
