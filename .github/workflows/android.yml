@@ -47,10 +47,11 @@ jobs:
 
       - name: Build with Gradle
         run: |
-          ./gradlew distZip \
+          ./gradlew \
             -PndkPath=$ANDROID_NDK_HOME \
             -Psigning.gnupg.keyName=${{ secrets.GPG_KEY_ID }} \
-            -Psigning.gnupg.passphrase=${{ secrets.GPG_PASSPHRASE }}
+            -Psigning.gnupg.passphrase=${{ secrets.GPG_PASSPHRASE }} \
+            -Prelease release
 
       - name: Generate SHA256 checksum
         run: |
@@ -69,6 +70,8 @@ jobs:
 
   release:
     needs: build
+    permissions:
+      contents: write # This is needed for creating releases
     if: github.ref == 'refs/heads/release'  # Only run on release branch
     runs-on: ubuntu-latest
 
