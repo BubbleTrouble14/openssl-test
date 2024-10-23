@@ -24,3 +24,10 @@ tasks.register("release") {
     dependsOn(project.getTasksByName("test", true))
     dependsOn(project.getTasksByName("distZip", true))
 }
+
+tasks.register("listProjects") {
+    doLast {
+        // Output as JSON array
+        println("[" + subprojects.joinToString(",") { "\"${it.name}\"" } + "]")
+    }
+}

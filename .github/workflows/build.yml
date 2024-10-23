@@ -9,10 +9,6 @@ on:
       - "**/src/**"
   pull_request:
     branches: [main]
-    paths:
-      - "**/build.gradle.kts"
-      - "settings.gradle.kts"
-      - "**/src/**"
   workflow_dispatch:
 
 jobs:
@@ -24,6 +20,12 @@ jobs:
       - uses: actions/checkout@v3
         with:
           fetch-depth: 2
+
+      - name: Set up JDK
+        uses: actions/setup-java@v3
+        with:
+          java-version: "17"
+          distribution: "temurin"
 
       - name: Get changed files
         id: changed-files
@@ -37,33 +39,30 @@ jobs:
       - name: Determine projects to build
         id: set-matrix
         run: |
-          # Initialize array for all projects that need building
-          projects=()
-
-          # Check settings.gradle.kts changes
           if echo "${{ steps.changed-files.outputs.all_changed_files }}" | grep -q "settings.gradle.kts"; then
-            # If settings file changed, get all enabled projects
-            while IFS= read -r line; do
-              if [[ $line =~ include\("([^"]+)"\) ]]; then
-                project="${BASH_REMATCH[1]}"
-                if [[ $project != "//" ]]; then  # Exclude commented projects
-                  projects+=("$project")
-                fi
-              fi
-            done < settings.gradle.kts
+            # If settings.gradle.kts changed, build all projects
+            projects=$(./gradlew -q listProjects)
           else
-            # Otherwise, only include projects with changes
-            for file in ${{ steps.changed-files.outputs.all_changed_files }}; do
-              project=$(echo $file | cut -d'/' -f1)
-              if [ -f "$project/build.gradle.kts" ] && [[ ! " ${projects[@]} " =~ " ${project} " ]]; then
-                projects+=("$project")
+            # Get all available projects
+            all_projects=$(./gradlew -q listProjects | jq -r '.[]')
+
+            # Filter projects with changes
+            projects="["
+            first=true
+            for project in $all_projects; do
+              if echo "${{ steps.changed-files.outputs.all_changed_files }}" | grep -q "^$project/"; then
+                if [ "$first" = true ]; then
+                  first=false
+                else
+                  projects="$projects,"
+                fi
+                projects="$projects\"$project\""
               fi
             done
+            projects="$projects]"
           fi
 
-          # Convert to JSON array for matrix
-          json_array=$(printf '%s\n' "${projects[@]}" | jq -R . | jq -s .)
-          echo "matrix={\"project\":$json_array}" >> $GITHUB_OUTPUT
+          echo "matrix={\"project\":$projects}" >> $GITHUB_OUTPUT
 
   build:
     needs: detect-changes
@@ -95,24 +94,6 @@ jobs:
           wget https://dl.google.com/android/repository/android-ndk-r26-linux.zip
           unzip android-ndk-r26-linux.zip
           rm android-ndk-r26-linux.zip
-
-      - name: Cache Gradle packages
-        uses: actions/cache@v3
-        with:
-          path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-          key: ${{ runner.os }}-gradle-${{ matrix.project }}-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
-          restore-keys: |
-            ${{ runner.os }}-gradle-${{ matrix.project }}-
-
-      - name: Cache build artifacts
-        uses: actions/cache@v3
-        with:
-          path: ${{ matrix.project }}/build
-          key: ${{ runner.os }}-build-${{ matrix.project }}-${{ hashFiles(format('{0}/**', matrix.project)) }}
-          restore-keys: |
-            ${{ runner.os }}-build-${{ matrix.project }}-
 
       - name: Build ${{ matrix.project }}
         run: |
