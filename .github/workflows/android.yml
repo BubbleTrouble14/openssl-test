@@ -3,8 +3,7 @@ name: Release Management
 on:
   push:
     branches:
-      - staging    # For testing builds
-      - release    # For creating releases
+      - release
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE20: true
@@ -31,19 +30,25 @@ jobs:
       - name: Set release names
         id: set_names
         run: |
+          VERSION="${{ steps.get_version.outputs.version }}"
+          if [[ -z "$VERSION" ]]; then
+            echo "Error: Version is empty"
+            exit 1
+          fi
+
           if [[ "${{ github.ref }}" == "refs/heads/staging" ]]; then
-            echo "release_name=openssl-${{ steps.get_version.outputs.version }}-beta-1" >> $GITHUB_OUTPUT
-            echo "artifact_base=openssl-${{ steps.get_version.outputs.version }}-beta-1" >> $GITHUB_OUTPUT
+            echo "release_name=openssl-${VERSION}-beta-1" >> $GITHUB_OUTPUT
+            echo "artifact_base=openssl-${VERSION}-beta-1" >> $GITHUB_OUTPUT
           else
-            echo "release_name=openssl-${{ steps.get_version.outputs.version }}" >> $GITHUB_OUTPUT
-            echo "artifact_base=openssl-${{ steps.get_version.outputs.version }}" >> $GITHUB_OUTPUT
+            echo "release_name=openssl-${VERSION}" >> $GITHUB_OUTPUT
+            echo "artifact_base=openssl-${VERSION}" >> $GITHUB_OUTPUT
           fi
 
       - name: Set up JDK
         uses: actions/setup-java@v4
         with:
-          java-version: '17'
-          distribution: 'temurin'
+          java-version: "17"
+          distribution: "temurin"
 
       - name: Set up Android NDK
         uses: nttld/setup-ndk@v1
@@ -129,22 +134,3 @@ jobs:
             artifacts/${{ needs.build.outputs.artifact_base }}.zip.sha256
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-  # Optional job for staging branch
-  staging-verification:
-    needs: build
-    if: github.ref == 'refs/heads/staging'
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Download artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: build-artifacts
-          path: artifacts
-
-      - name: Verify build artifacts
-        run: |
-          echo "Build verification for version ${{ needs.build.outputs.version }} completed"
-          echo "Artifacts available for testing:"
-          ls -la artifacts/
