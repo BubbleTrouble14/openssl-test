@@ -1,73 +1,124 @@
-name: Android CI
+# .github/workflows/release.yml
+name: Release Management
 
 on:
   push:
-    branches: [main, master]
-  pull_request:
-    branches: [main, master]
-  release:
-    types: [created]
-
-env:
-  JAVA_VERSION: 17
-  NDK_VERSION: 26.1.10909125
-  GRADLE_VERSION: 8.4
-
-permissions: # Move this to root level
-  contents: read
-  packages: write
+    branches:
+      - staging    # For testing builds
+      - release    # For creating releases
 
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+
+    outputs:
+      version: ${{ steps.get_version.outputs.version }}
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up JDK ${{ env.JAVA_VERSION }}
+      - name: Get version
+        id: get_version
+        run: |
+          VERSION=$(grep "val portVersion =" build.gradle.kts | cut -d'"' -f2)
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Detected version: $VERSION"
+
+      - name: Set up JDK
         uses: actions/setup-java@v4
         with:
-          java-version: ${{ env.JAVA_VERSION }}
-          distribution: "temurin"
-          cache: "gradle"
+          java-version: '17'
+          distribution: 'temurin'
 
-      - name: Setup Android SDK and NDK
+      - name: Set up Android NDK
+        uses: nttld/setup-ndk@v1
+        with:
+          ndk-version: r25c
+          local-cache: true
+
+      - name: Import GPG key
+        uses: crazy-max/ghaction-import-gpg@v6
+        with:
+          gpg_private_key: ${{ secrets.GPG_PRIVATE_KEY }}
+          passphrase: ${{ secrets.GPG_PASSPHRASE }}
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
+
+      - name: Build with Gradle
         run: |
-          # Install Android SDK Command-line tools
-          wget -q https://dl.google.com/android/repository/commandlinetools-linux-10406996_latest.zip
-          unzip -q commandlinetools-linux-10406996_latest.zip
-          mkdir -p ${ANDROID_SDK_ROOT}/cmdline-tools
-          mv cmdline-tools ${ANDROID_SDK_ROOT}/cmdline-tools/latest
+          ./gradlew distZip \
+            -PndkPath=$ANDROID_NDK_HOME \
+            -Psigning.gnupg.keyName=${{ secrets.GPG_KEY_ID }} \
+            -Psigning.gnupg.passphrase=${{ secrets.GPG_PASSPHRASE }}
 
-          # Install NDK
-          ${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager --install "ndk;${{ env.NDK_VERSION }}"
-
-          # Set environment variables
-          echo "ANDROID_NDK_HOME=${ANDROID_SDK_ROOT}/ndk/${{ env.NDK_VERSION }}" >> $GITHUB_ENV
-          echo "ANDROID_NDK_ROOT=${ANDROID_SDK_ROOT}/ndk/${{ env.NDK_VERSION }}" >> $GITHUB_ENV
-
-      - name: Grant execute permission for gradlew
-        run: chmod +x gradlew
-
-      - name: Build OpenSSL
-        if: github.event_name != 'release'
+      - name: Generate SHA256 checksum
         run: |
-          ./gradlew -PndkPath=$ANDROID_NDK_ROOT build --stacktrace
+          cd build/distributions
+          sha256sum *.zip > SHA256SUMS
+          gpg --armor --detach-sign SHA256SUMS
 
-      - name: Build and Publish OpenSSL
-        if: github.event_name == 'release'
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GITHUB_ACTOR: ${{ github.actor }}
-          GITHUB_REPOSITORY: ${{ github.repository }}
-        run: |
-          ./gradlew -PndkPath=$ANDROID_NDK_ROOT -Prelease release --stacktrace --info
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-artifacts
+          path: |
+            build/distributions/*.zip
+            build/distributions/SHA256SUMS
+            build/distributions/SHA256SUMS.asc
 
-      - name: Upload Artifacts
-        if: github.event_name == 'release'
+  release:
+    needs: build
+    if: github.ref == 'refs/heads/release'  # Only run on release branch
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: build-artifacts
+          path: artifacts
+
+      - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
-          files: build/distributions/*.zip
+          tag_name: v${{ needs.build.outputs.version }}
+          name: Release v${{ needs.build.outputs.version }}
+          body: |
+            OpenSSL Android NDK Port v${{ needs.build.outputs.version }}
+
+            ## Verification
+            ```bash
+            # Verify signature
+            gpg --verify SHA256SUMS.asc SHA256SUMS
+
+            # Verify checksum
+            sha256sum -c SHA256SUMS
+            ```
+          draft: false
+          prerelease: false
+          files: |
+            artifacts/*.zip
+            artifacts/SHA256SUMS
+            artifacts/SHA256SUMS.asc
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # Optional job for staging branch
+  staging-verification:
+    needs: build
+    if: github.ref == 'refs/heads/staging'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: build-artifacts
+          path: artifacts
+
+      - name: Verify build artifacts
+        run: |
+          echo "Build verification for version ${{ needs.build.outputs.version }} completed"
+          echo "Artifacts available for testing:"
+          ls -la artifacts/

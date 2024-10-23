@@ -1,11 +1,13 @@
 import com.android.ndkports.AdHocPortTask
+import com.android.ndkports.AndroidExecutableTestTask
 import com.android.ndkports.CMakeCompatibleVersion
 import java.io.File
 import java.net.URL
 import java.security.MessageDigest
 import org.gradle.api.DefaultTask
 import org.gradle.api.GradleException
-import org.jreleaser.model.Active
+import org.gradle.api.tasks.Copy
+import org.gradle.api.tasks.TaskAction
 
 val portVersion = "3.4.0"
 val opensslDownloadUrl = "https://github.com/openssl/openssl/releases/download/openssl-${portVersion}/openssl-${portVersion}.tar.gz"
@@ -17,8 +19,8 @@ version = "$portVersion${rootProject.extra.get("snapshotSuffix")}"
 
 plugins {
     id("maven-publish")
-    id("org.jreleaser")
     id("com.android.ndkports.NdkPorts")
+    id("signing")  // Add this line
     distribution
 }
 
@@ -110,13 +112,12 @@ tasks.register<DefaultTask>("verifyOpenSSL") {
     }
 }
 
-
-// Make extractSrc task depend on verifyOpenSSL
 tasks.named("extractSrc") {
     dependsOn("verifyOpenSSL")
 }
 
-tasks.register<AdHocPortTask>("buildPort") {
+
+val buildTask = tasks.register<AdHocPortTask>("buildPort") {
     dependsOn("extractSrc")
 
     builder {
@@ -137,12 +138,14 @@ tasks.register<AdHocPortTask>("buildPort") {
 
         run {
             args("make", "-j$ncpus", "SHLIB_EXT=.so")
+
             env("ANDROID_NDK", toolchain.ndk.path.absolutePath)
             env("PATH", "${toolchain.binDir}:${System.getenv("PATH")}")
         }
 
         run {
             args("make", "install_sw", "SHLIB_EXT=.so")
+
             env("ANDROID_NDK", toolchain.ndk.path.absolutePath)
             env("PATH", "${toolchain.binDir}:${System.getenv("PATH")}")
         }
@@ -151,21 +154,12 @@ tasks.register<AdHocPortTask>("buildPort") {
 
 tasks.prefabPackage {
     version.set(CMakeCompatibleVersion.parse(portVersion))
+
     licensePath.set("LICENSE.txt")
+
     modules {
         create("crypto")
         create("ssl")
-    }
-}
-
-// Task to run all necessary steps in one command
-tasks.register<DefaultTask>("buildAll") {
-    dependsOn("buildPort")
-    group = "build"
-    description = "Downloads, verifies, and builds OpenSSL."
-
-    doLast {
-        println("All tasks completed successfully.")
     }
 }
 
@@ -176,7 +170,9 @@ publishing {
             pom {
                 name.set("OpenSSL")
                 description.set("The ndkports AAR for OpenSSL.")
-                url.set("https://github.com/BubbleTrouble14/openssl-test")
+                url.set(
+                    "https://android.googlesource.com/platform/tools/ndkports"
+                )
                 licenses {
                     license {
                         name.set("Dual OpenSSL and SSLeay License")
@@ -186,15 +182,12 @@ publishing {
                 }
                 developers {
                     developer {
-                        id.set("BubbleTrouble14")
-                        name.set("Your Name")
-                        email.set("your.email@example.com")
+                        name.set("The Android Open Source Project")
                     }
                 }
                 scm {
-                    connection.set("scm:git:git://github.com/BubbleTrouble14/openssl-test.git")
-                    developerConnection.set("scm:git:ssh://github.com/BubbleTrouble14/openssl-test.git")
-                    url.set("https://github.com/BubbleTrouble14/openssl-test")
+                    url.set("https://android.googlesource.com/platform/tools/ndkports")
+                    connection.set("scm:git:https://android.googlesource.com/platform/tools/ndkports")
                 }
             }
         }
@@ -202,62 +195,56 @@ publishing {
 
     repositories {
         maven {
-            name = "stagingLocal"
-            url = uri("${layout.buildDirectory.get()}/repository")
+            url = uri("${project.buildDir}/repository")
         }
     }
 }
 
-
-jreleaser {
-    project {
-        name.set("openssl")
-        version.set(version.toString())
-    }
-
-    signing {
-        active = Active.ALWAYS
-        armored = true
-    }
-
-    deploy {
-        maven {
-            mavenCentral {
-                create("sonatype") {
-                    active = Active.ALWAYS
-                    url = "https://central.sonatype.com/api/v1/publisher"
-                    stagingRepositories.add("${layout.buildDirectory.get()}/staging-deploy")
-                }
-            }
-        }
-    }
+// Configure signing
+signing {
+    sign(publishing.publications["maven"])
 }
 
-// Update the publishing repository path to match JReleaser's expected path
-publishing {
-    repositories {
-        maven {
-            name = "stagingLocal"
-            url = uri("${layout.buildDirectory.get()}/staging-deploy")
-        }
-    }
-}
+// // Task to generate ASCII-armored signatures for distribution files
+// tasks.register("signDistributionFiles") {
+//     dependsOn("publish")
 
-// Update distributions to use the same path
+//     doLast {
+//         fileTree(project.buildDir.resolve("repository")) {
+//             include("**/*.aar")
+//             include("**/*.pom")
+//             include("**/*.module")
+//         }.forEach { file ->
+//             exec {
+//                 commandLine(
+//                     "gpg",
+//                     "--pinentry-mode",
+//                     "loopback",
+//                     "--armor",
+//                     "--detach-sign",
+//                     "--output",
+//                     "${file.absolutePath}.asc",
+//                     file.absolutePath
+//                 )
+//             }
+//         }
+//     }
+// }
+
 distributions {
     main {
         contents {
-            from("${layout.buildDirectory.get()}/staging-deploy")
-            include("**/*.aar")
-            include("**/*.pom")
+            from("${project.buildDir}/repository")
+            include("**/*")
+            // include("**/*.aar")
+            // include("**/*.pom")
         }
     }
 }
 
-// Add a staging task
-tasks.register("prepareRelease") {
-    dependsOn("buildAll", "publish")
-    doLast {
-        println("Release artifacts prepared in ${layout.buildDirectory.get()}/staging-deploy")
+tasks {
+    distZip {
+        dependsOn("publish")
+        destinationDirectory.set(File(rootProject.buildDir, "distributions"))
     }
 }
