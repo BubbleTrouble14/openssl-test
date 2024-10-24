@@ -217,14 +217,9 @@ distributions {
     }
 }
 
-// tasks {
-//     distZip {
-//         dependsOn("publish")
-//         destinationDirectory.set(File(rootProject.buildDir, "distributions"))
-//     }
-// }
-// Explicitly declare the distZip task
-tasks.named<Zip>("distZip") {
-    dependsOn("publish")
-    destinationDirectory.set(File(rootProject.buildDir, "distributions"))
+tasks {
+    distZip {
+        dependsOn("publish")
+        destinationDirectory.set(File(rootProject.buildDir, "distributions"))
+    }
 }

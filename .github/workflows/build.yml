@@ -17,6 +17,7 @@ jobs:
 
       - name: Setup Gradle Cache
         uses: actions/cache@v3
+        id: gradle-cache
         with:
           path: |
             ~/.gradle/caches
@@ -30,12 +31,13 @@ jobs:
         with:
           java-version: "17"
           distribution: "temurin"
-          cache: "gradle" # Enables built-in Gradle caching
+          # Disable built-in Gradle caching since we're using our own cache action
+          cache: none
 
       - name: Get all projects
         id: set-matrix
         run: |
-          projects=$(./gradlew -q listProjects)
+          projects=$(./gradlew -q listProjects --no-daemon)
           echo "Found projects: $projects"
           echo "matrix={\"project\":$projects}" >> $GITHUB_OUTPUT
 
@@ -49,9 +51,10 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
-      # Cache Ubuntu packages
+      # Cache APT packages
       - name: Cache APT packages
         uses: actions/cache@v3
+        id: apt-cache
         with:
           path: /var/cache/apt/archives
           key: ${{ runner.os }}-apt-${{ hashFiles('**/package-list') }}
@@ -61,6 +64,7 @@ jobs:
       # Cache Gradle files
       - name: Setup Gradle Cache
         uses: actions/cache@v3
+        id: gradle-cache
         with:
           path: |
             ~/.gradle/caches
@@ -72,17 +76,17 @@ jobs:
           restore-keys: |
             gradle-build-${{ runner.os }}-
 
-      # Set up JDK with Gradle caching
+      # Set up JDK without built-in caching
       - name: Set up JDK
         uses: actions/setup-java@v3
         with:
           java-version: "17"
           distribution: "temurin"
-          cache: "gradle"
+          cache: none
 
       # Cache NDK
       - name: Cache NDK
-        id: cache-ndk
+        id: ndk-cache
         uses: actions/cache@v3
         with:
           path: |
@@ -91,17 +95,17 @@ jobs:
           key: ${{ runner.os }}-ndk-r26-${{ hashFiles('**/ndk.hash') }}
 
       - name: Download Android NDK
-        if: steps.cache-ndk.outputs.cache-hit != 'true'
+        if: steps.ndk-cache.outputs.cache-hit != 'true'
         run: |
           wget https://dl.google.com/android/repository/android-ndk-r26-linux.zip
           unzip android-ndk-r26-linux.zip
           rm android-ndk-r26-linux.zip
-          # Create hash file for cache key
           echo "r26" > ndk.hash
 
-      # Cache build outputs
+      # Cache build outputs - only save if there was no cache hit
       - name: Cache Build Outputs
         uses: actions/cache@v3
+        id: build-cache
         with:
           path: |
             **/build
@@ -109,6 +113,7 @@ jobs:
           key: ${{ runner.os }}-build-${{ matrix.project }}-${{ github.sha }}
           restore-keys: |
             ${{ runner.os }}-build-${{ matrix.project }}-
+          save-always: false
 
       - name: Build ${{ matrix.project }}
         run: |
