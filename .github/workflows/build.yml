@@ -22,9 +22,9 @@ jobs:
           path: |
             ~/.gradle/caches
             ~/.gradle/wrapper
-          key: gradle-detect-${{ runner.os }}-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          key: gradle-${{ runner.os }}-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
           restore-keys: |
-            gradle-detect-${{ runner.os }}-
+            gradle-${{ runner.os }}-
 
       - name: Set up JDK
         uses: actions/setup-java@v3
@@ -49,17 +49,7 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
-      # Cache APT packages
-      - name: Cache APT packages
-        uses: actions/cache@v3
-        id: apt-cache
-        with:
-          path: /var/cache/apt/archives
-          key: ${{ runner.os }}-apt-${{ hashFiles('**/package-list') }}
-          restore-keys: |
-            ${{ runner.os }}-apt-
-
-      # Cache Gradle files
+      # Cache Gradle files with same key as detect-projects
       - name: Setup Gradle Cache
         uses: actions/cache@v3
         id: gradle-cache
@@ -70,26 +60,27 @@ jobs:
             ~/.gradle/native
             ~/.gradle/daemon
             ~/.gradle/buildOutputCleanup
-          key: gradle-build-${{ runner.os }}-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          key: gradle-${{ runner.os }}-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
           restore-keys: |
-            gradle-build-${{ runner.os }}-
+            gradle-${{ runner.os }}-
 
-      # Set up JDK without built-in caching
+      # Set up JDK
       - name: Set up JDK
         uses: actions/setup-java@v3
         with:
           java-version: "17"
           distribution: "temurin"
 
-      # Cache NDK
+      # Cache NDK with commit-based key for better hit rates
       - name: Cache NDK
         id: ndk-cache
         uses: actions/cache@v3
         with:
           path: |
             ${{ github.workspace }}/android-ndk-r26
-            ~/.android/ndk
-          key: ${{ runner.os }}-ndk-r26-${{ hashFiles('**/ndk.hash') }}
+          key: ndk-${{ runner.os }}-r26-${{ github.sha }}
+          restore-keys: |
+            ndk-${{ runner.os }}-r26-
 
       - name: Download Android NDK
         if: steps.ndk-cache.outputs.cache-hit != 'true'
@@ -97,9 +88,8 @@ jobs:
           wget https://dl.google.com/android/repository/android-ndk-r26-linux.zip
           unzip android-ndk-r26-linux.zip
           rm android-ndk-r26-linux.zip
-          echo "r26" > ndk.hash
 
-      # Cache build outputs - only save if there was no cache hit
+      # Cache build outputs per project
       - name: Cache Build Outputs
         uses: actions/cache@v3
         id: build-cache
@@ -107,13 +97,29 @@ jobs:
           path: |
             **/build
             !**/build/distributions
-          key: ${{ runner.os }}-build-${{ matrix.project }}-${{ github.sha }}
+          key: build-${{ runner.os }}-${{ matrix.project }}-${{ hashFiles(format('{0}/**/*.gradle*', matrix.project)) }}
           restore-keys: |
-            ${{ runner.os }}-build-${{ matrix.project }}-
+            build-${{ runner.os }}-${{ matrix.project }}-
+
+      # Debug step to verify cache contents
+      - name: Debug Cache
+        run: |
+          echo "Gradle cache contents:"
+          ls -la ~/.gradle/caches || true
+          echo "NDK location:"
+          ls -la ${{ github.workspace }}/android-ndk-r26 || true
+          echo "Build directory:"
+          ls -la **/build || true
 
       - name: Build ${{ matrix.project }}
         run: |
-          ./gradlew :${{ matrix.project }}:distZip -PndkPath=${{ github.workspace }}/android-ndk-r26 -Prelease --no-daemon --stacktrace --info
+          ./gradlew :${{ matrix.project }}:distZip \
+            -PndkPath=${{ github.workspace }}/android-ndk-r26 \
+            -Prelease \
+            --no-daemon \
+            --stacktrace \
+            --info \
+            --scan
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v3
