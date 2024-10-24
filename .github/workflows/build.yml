@@ -9,57 +9,49 @@ on:
 
 jobs:
   detect-projects:
-      runs-on: ubuntu-latest
-      outputs:
-        matrix: ${{ steps.get-projects.outputs.matrix }}
-      steps:
-        - uses: actions/checkout@v4
-          with:
-            submodules: true
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.get-projects.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
 
-        - name: Set up JDK
-          uses: actions/setup-java@v4
-          with:
-            distribution: "temurin"
-            java-version: "17"
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: "temurin"
+          java-version: "17"
 
-        - name: Set up Android NDK
-          uses: nttld/setup-ndk@v1
-          with:
-            ndk-version: r25c
-            local-cache: true
+      - name: Set up Android NDK
+        uses: nttld/setup-ndk@v1
+        with:
+          ndk-version: r25c
+          local-cache: true
 
-        - name: Get project information
-          id: get-projects
-          run: |
-            chmod +x gradlew
-            echo "Running exportProjectInfo..."
-            ./gradlew exportProjectInfo -PndkPath=$ANDROID_NDK_HOME
+      - name: Get project information
+        id: get-projects
+        run: |
+          chmod +x gradlew
+          echo "Running exportProjectInfo..."
+          ./gradlew exportProjectInfo -PndkPath=$ANDROID_NDK_HOME
 
-            echo "Contents of projects.json:"
-            cat build/project-info/projects.json
+          echo "Contents of projects.json:"
+          cat build/project-info/projects.json
 
-            echo "Creating matrix..."
-            matrix=$(cat build/project-info/projects.json | jq -c '{"include": .project}')
-            echo "Raw matrix value: $matrix"
+          echo "Setting matrix output..."
+          matrix=$(cat build/project-info/projects.json)
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
 
-            # Validate JSON structure
-            echo "Matrix structure:"
-            echo $matrix | jq '.'
-
-            echo "Setting matrix output..."
-            echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
-
-            # Show what was written to GITHUB_OUTPUT
-            echo "Content of GITHUB_OUTPUT:"
-            cat $GITHUB_OUTPUT
+          # Show what was written to GITHUB_OUTPUT
+          echo "Content of GITHUB_OUTPUT:"
+          cat $GITHUB_OUTPUT
 
   build:
     needs: detect-projects
     runs-on: ubuntu-latest
     strategy:
       matrix: ${{fromJson(needs.detect-projects.outputs.matrix)}}
-      fail-fast: false
 
     steps:
       - uses: actions/checkout@v4
@@ -87,9 +79,9 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
 
-      - name: Build ${{ matrix.project.name }}
+      - name: Build ${{ matrix.name }}
         run: |
-          ./gradlew :${{ matrix.project.name }}:distZip \
+          ./gradlew :${{ matrix.name }}:distZip \
             -PndkPath=$ANDROID_NDK_HOME \
             -Psigning.gnupg.keyName=${{ secrets.GPG_KEY_ID }} \
             -Psigning.gnupg.passphrase=${{ secrets.GPG_PASSPHRASE }}
@@ -108,12 +100,12 @@ jobs:
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.project.name }}-build-artifacts
+          name: ${{ matrix.name }}-build-artifacts
           path: |
-            build/distributions/${{ matrix.project.name }}-${{ matrix.project.version }}.zip
-            build/distributions/${{ matrix.project.name }}-${{ matrix.project.version }}.zip.asc
-            build/distributions/${{ matrix.project.name }}-${{ matrix.project.version }}.zip.sha1
-            build/distributions/${{ matrix.project.name }}-${{ matrix.project.version }}.zip.sha256
+            build/distributions/${{ matrix.name }}-${{ matrix.version }}.zip
+            build/distributions/${{ matrix.name }}-${{ matrix.version }}.zip.asc
+            build/distributions/${{ matrix.name }}-${{ matrix.version }}.zip.sha1
+            build/distributions/${{ matrix.name }}-${{ matrix.version }}.zip.sha256
 
   publish:
     needs: [build, detect-projects]
@@ -128,28 +120,28 @@ jobs:
       - name: Download artifacts
         uses: actions/download-artifact@v4
         with:
-          name: ${{ matrix.project.name }}-build-artifacts
+          name: ${{ matrix.name }}-build-artifacts
           path: artifacts
 
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
           files: |
-            artifacts/${{ matrix.project.name }}-*.zip
-            artifacts/${{ matrix.project.name }}-*.asc
-            artifacts/${{ matrix.project.name }}-*.sha1
-            artifacts/${{ matrix.project.name }}-*.sha256
-          tag_name: ${{ matrix.project.name }}-${{ matrix.project.version }}
-          name: ${{ matrix.project.libName }} ${{ matrix.project.version }}
+            artifacts/${{ matrix.name }}-*.zip
+            artifacts/${{ matrix.name }}-*.asc
+            artifacts/${{ matrix.name }}-*.sha1
+            artifacts/${{ matrix.name }}-*.sha256
+          tag_name: ${{ matrix.name }}-${{ matrix.version }}
+          name: ${{ matrix.libName }} ${{ matrix.version }}
           body: |
-            ${{ matrix.project.libName }} version ${{ matrix.project.version }}
+            ${{ matrix.libName }} version ${{ matrix.version }}
             ## Verification
             ```bash
             # Verify signature
-            gpg --verify ${{ matrix.project.name }}-${{ matrix.project.version }}.zip.asc ${{ matrix.project.name }}-${{ matrix.project.version }}.zip
+            gpg --verify ${{ matrix.name }}-${{ matrix.version }}.zip.asc ${{ matrix.name }}-${{ matrix.version }}.zip
             # Verify checksums
-            sha256sum -c ${{ matrix.project.name }}-${{ matrix.project.version }}.zip.sha256
-            sha1sum -c ${{ matrix.project.name }}-${{ matrix.project.version }}.zip.sha1
+            sha256sum -c ${{ matrix.name }}-${{ matrix.version }}.zip.sha256
+            sha1sum -c ${{ matrix.name }}-${{ matrix.version }}.zip.sha1
             ```
           draft: false
           prerelease: false

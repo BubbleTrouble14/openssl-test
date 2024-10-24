@@ -38,7 +38,7 @@ tasks.register("exportProjectInfo") {
             // Get project-specific configuration
             val configs = rootProject.extra["projectConfigs"] as Map<String, Map<String, String>>
             val projectConfig = configs[proj.name] ?: error("No configuration found for project ${proj.name}")
-            
+
             val version = projectConfig["libVersion"]
             val libName = projectConfig["libName"]
 
@@ -52,7 +52,7 @@ tasks.register("exportProjectInfo") {
             )
         }
 
-        val matrix = mapOf("project" to projects)
+        val matrix = mapOf("inlcude" to projects)
         val json = groovy.json.JsonBuilder(matrix).toPrettyString()
         println("Generated JSON: $json")
 
