@@ -22,33 +22,27 @@ repositories {
 
 tasks.register("exportProjectInfo") {
     doLast {
-        println("Starting project info export...")
+        val projects = subprojects.filter { proj ->
+            proj.plugins.hasPlugin("com.android.ndkports.NdkPorts")
+        }.map { proj ->
+            // Read properties from subproject's gradle.properties
+            val libName: String? = proj.findProperty("libName") as? String
+            val libVersion: String? = proj.findProperty("libVersion") as? String
 
-        val projects = subprojects.mapNotNull { proj ->
-            val libName = proj.findProperty("libName")?.toString()
-            val libVersion = proj.findProperty("libVersion")?.toString()
-
-            if (libName != null && libVersion != null) {
-                mapOf(
-                    "name" to proj.name,  // This is all we need since it's the same as directory
-                    "version" to libVersion,
-                    "libName" to libName
-                )
-            } else {
-                println("Warning: Project ${proj.name} is missing required properties (libName or libVersion)")
-                null
-            }
+            mapOf(
+                "name" to proj.name,
+                "version" to libVersion,
+                "libName" to libName
+            )
         }
 
         val matrix = mapOf("project" to projects)
-        val json = groovy.json.JsonBuilder(matrix).toString()
+        val json = groovy.json.JsonBuilder(matrix).toPrettyString()
 
         project.buildDir.resolve("project-info").apply {
             mkdirs()
             resolve("projects.json").writeText(json)
         }
-
-        println("matrix=$json")
     }
 }
 
