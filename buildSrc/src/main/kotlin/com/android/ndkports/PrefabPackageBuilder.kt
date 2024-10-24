@@ -70,7 +70,8 @@ class PrefabPackageBuilder(
     private val modulesDirectory = prefabDirectory.resolve("modules")
 
     // TODO: Get from gradle.
-    private val packageName = "io.github.cryptorg.${packageData.name}"
+    // private val packageName = "io.github.cryptorg.${packageData.name}"
+    private val packageName = "io.github.${System.getenv("GITHUB_REPOSITORY")?.split("/")?.first()?.toLowerCase() ?: "user"}.${packageData.name}"
 
     private fun preparePackageDirectory() {
         if (packageDirectory.exists()) {

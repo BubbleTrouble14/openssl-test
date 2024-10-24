@@ -84,8 +84,7 @@ jobs:
           ./gradlew :${{ matrix.project }}:distZip \
             -PndkPath=$ANDROID_NDK_HOME \
             -Psigning.gnupg.keyName=${{ secrets.GPG_KEY_ID }} \
-            -Psigning.gnupg.passphrase=${{ secrets.GPG_PASSPHRASE }} \
-            -Prelease
+            -Psigning.gnupg.passphrase=${{ secrets.GPG_PASSPHRASE }}
 
       - name: Prepare release artifacts
         run: |
