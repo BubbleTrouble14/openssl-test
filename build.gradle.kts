@@ -25,19 +25,30 @@ tasks.register("exportProjectInfo") {
         val projects = subprojects.filter { proj ->
             proj.plugins.hasPlugin("com.android.ndkports.NdkPorts")
         }.map { proj ->
+            // Add debug logging
+            println("Processing project: ${proj.name}")
+            println("Available properties: ${proj.properties.keys}")
+
             // Read properties from subproject's gradle.properties
+            val version: String? = proj.findProperty("version") as? String
             val libName: String? = proj.findProperty("libName") as? String
-            val libVersion: String? = proj.findProperty("libVersion") as? String
+
+            // Debug log the values
+            println("Found version: $version")
+            println("Found libName: $libName")
 
             mapOf(
                 "name" to proj.name,
-                "version" to libVersion,
+                "version" to version,
                 "libName" to libName
             )
         }
 
         val matrix = mapOf("project" to projects)
         val json = groovy.json.JsonBuilder(matrix).toPrettyString()
+
+        // Debug log the final JSON
+        println("Generated JSON: $json")
 
         project.buildDir.resolve("project-info").apply {
             mkdirs()
