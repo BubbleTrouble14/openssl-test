@@ -20,21 +20,28 @@ repositories {
     google()
 }
 
+// Define project configurations
+extra["projectConfigs"] = mapOf(
+    "openssl" to mapOf(
+        "libVersion" to "3.4.0",
+        "libName" to "OpenSSL"
+    ),
+)
+
 tasks.register("exportProjectInfo") {
     doLast {
         val projects = subprojects.filter { proj ->
             proj.plugins.hasPlugin("com.android.ndkports.NdkPorts")
         }.map { proj ->
-            // Add debug logging
             println("Processing project: ${proj.name}")
-            println("Available properties: ${proj.properties.keys}")
 
-            // Read properties from subproject's gradle.properties
-            // Change this line to use the correct property names
-            val version: String? = proj.findProperty("libVersion") as? String  // Changed from "version"
-            val libName: String? = proj.findProperty("libName") as? String     // Keep as is
+            // Get project-specific configuration
+            val configs = rootProject.extra["projectConfigs"] as Map<String, Map<String, String>>
+            val projectConfig = configs[proj.name] ?: error("No configuration found for project ${proj.name}")
+            
+            val version = projectConfig["libVersion"]
+            val libName = projectConfig["libName"]
 
-            // Debug log the values
             println("Found version: $version")
             println("Found libName: $libName")
 
@@ -47,8 +54,6 @@ tasks.register("exportProjectInfo") {
 
         val matrix = mapOf("project" to projects)
         val json = groovy.json.JsonBuilder(matrix).toPrettyString()
-
-        // Debug log the final JSON
         println("Generated JSON: $json")
 
         project.buildDir.resolve("project-info").apply {
@@ -57,6 +62,7 @@ tasks.register("exportProjectInfo") {
         }
     }
 }
+
 
 tasks.register("openssl") {
      dependsOn(":openssl:distZip")

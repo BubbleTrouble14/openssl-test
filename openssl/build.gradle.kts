@@ -9,12 +9,14 @@ import org.gradle.api.GradleException
 import org.gradle.api.tasks.Copy
 import org.gradle.api.tasks.TaskAction
 
-// val libName = "OpenSSL"
-// val portVersion = requireNotNull(project.findProperty("libVersion")) {
-//     "libVersion property must be set in gradle.properties"
-// } as String
-// val portVersion = "3.4.0"
-val portVersion = project.findProperty("libVersion")?.toString() ?: "3.4.0"
+// Get project-specific configuration
+val configs = rootProject.extra["projectConfigs"] as Map<String, Map<String, String>>
+val projectConfig = configs[project.name] ?: error("No configuration found for project ${project.name}")
+
+val libVersion = projectConfig["libVersion"]!!
+val libName = projectConfig["libName"]!!
+
+val portVersion = libVersion
 
 val opensslDownloadUrl = "https://github.com/openssl/openssl/releases/download/openssl-${portVersion}/openssl-${portVersion}.tar.gz"
 val opensslSha256Url = "${opensslDownloadUrl}.sha256"
