@@ -29,34 +29,39 @@ extra["projectConfigs"] = mapOf(
 )
 
 tasks.register("exportProjectInfo") {
+    // Create an output file property
+    val outputFile = project.objects.property(File::class)
+
+    doFirst {
+        // Get the output file path from the provided property or use a default
+        outputFile.set(project.layout.buildDirectory.file("ndkports-matrix.json").get().asFile)
+        // Ensure the parent directory exists
+        outputFile.get().parentFile.mkdirs()
+    }
+
     doLast {
         val projects = subprojects.filter { proj ->
             proj.plugins.hasPlugin("com.android.ndkports.NdkPorts")
         }.map { proj ->
-            println("Processing project: ${proj.name}")
-
             // Get project-specific configuration
             val configs = rootProject.extra["projectConfigs"] as Map<String, Map<String, String>>
             val projectConfig = configs[proj.name] ?: error("No configuration found for project ${proj.name}")
 
-            val version = projectConfig["libVersion"]
-            val libName = projectConfig["libName"]
-
-            println("Found version: $version")
-            println("Found libName: $libName")
-
             mapOf(
                 "name" to proj.name,
-                "version" to version,
-                "libName" to libName
+                "version" to projectConfig["libVersion"],
+                "libName" to projectConfig["libName"]
             )
         }
 
         val matrix = mapOf("include" to projects)
-        val json = groovy.json.JsonBuilder(matrix).toString()
+        val json = groovy.json.JsonBuilder(matrix).toPrettyString()
 
-        // Output the matrix in a format that GitHub Actions can capture
-        println("::set-output name=matrix::$json")
+        // Write to the output file
+        outputFile.get().writeText(json)
+
+        // Print the file path for debugging
+        println("Matrix JSON written to: ${outputFile.get().absolutePath}")
     }
 }
 

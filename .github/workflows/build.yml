@@ -33,15 +33,16 @@ jobs:
         id: get-projects
         run: |
           chmod +x gradlew
-          echo "Running exportProjectInfo..."
-          matrix=$(./gradlew -q exportProjectInfo -PndkPath=$ANDROID_NDK_HOME)
+          # Run Gradle task to generate the JSON file
+          ./gradlew -q exportProjectInfo -PndkPath=$ANDROID_NDK_HOME
 
-          echo "Setting matrix output..."
-          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+          # Read the JSON file and set it as the matrix
+          matrix=$(cat build/ndkports-matrix.json)
+          echo "matrix=$matrix" >> $GITHUB_OUTPUT
 
-          # Show what was written to GITHUB_OUTPUT
-          echo "Content of GITHUB_OUTPUT:"
-          cat $GITHUB_OUTPUT
+          # Optional: Show the content for verification
+          echo "Generated matrix configuration:"
+          cat build/ndkports-matrix.json
 
   build:
     needs: detect-projects
