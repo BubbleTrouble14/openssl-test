@@ -111,6 +111,8 @@ jobs:
   publish:
     needs: [build, detect-projects]
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     strategy:
       matrix: ${{fromJson(needs.detect-projects.outputs.matrix)}}
