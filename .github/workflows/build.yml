@@ -17,17 +17,6 @@ jobs:
         with:
           submodules: true
 
-      - name: Setup Gradle Cache
-        uses: actions/cache@v3
-        id: gradle-cache
-        with:
-          path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-          key: gradle-${{ runner.os }}-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
-          restore-keys: |
-            gradle-${{ runner.os }}-
-
       - name: Set up JDK
         uses: actions/setup-java@v3
         with:
@@ -53,67 +42,17 @@ jobs:
         with:
           submodules: true
 
-      # Cache Gradle files with same key as detect-projects
-      - name: Setup Gradle Cache
-        uses: actions/cache@v3
-        id: gradle-cache
-        with:
-          path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-            ~/.gradle/native
-            ~/.gradle/daemon
-            ~/.gradle/buildOutputCleanup
-          key: gradle-${{ runner.os }}-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
-          restore-keys: |
-            gradle-${{ runner.os }}-
-
-      # Set up JDK
       - name: Set up JDK
         uses: actions/setup-java@v3
         with:
           java-version: "17"
           distribution: "temurin"
 
-      # Cache NDK with commit-based key for better hit rates
-      - name: Cache NDK
-        id: ndk-cache
-        uses: actions/cache@v3
-        with:
-          path: |
-            ${{ github.workspace }}/android-ndk-r26
-          key: ndk-${{ runner.os }}-r26-${{ github.sha }}
-          restore-keys: |
-            ndk-${{ runner.os }}-r26-
-
       - name: Download Android NDK
-        if: steps.ndk-cache.outputs.cache-hit != 'true'
         run: |
           wget https://dl.google.com/android/repository/android-ndk-r26-linux.zip
           unzip android-ndk-r26-linux.zip
           rm android-ndk-r26-linux.zip
-
-      # Cache build outputs per project
-      - name: Cache Build Outputs
-        uses: actions/cache@v3
-        id: build-cache
-        with:
-          path: |
-            **/build
-            !**/build/distributions
-          key: build-${{ runner.os }}-${{ matrix.project }}-${{ hashFiles(format('{0}/**/*.gradle*', matrix.project)) }}
-          restore-keys: |
-            build-${{ runner.os }}-${{ matrix.project }}-
-
-      # Debug step to verify cache contents
-      - name: Debug Cache
-        run: |
-          echo "Gradle cache contents:"
-          ls -la ~/.gradle/caches || true
-          echo "NDK location:"
-          ls -la ${{ github.workspace }}/android-ndk-r26 || true
-          echo "Build directory:"
-          ls -la **/build || true
 
       - name: Import GPG key
         uses: crazy-max/ghaction-import-gpg@v6
