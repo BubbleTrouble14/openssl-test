@@ -110,11 +110,10 @@ jobs:
           key: ${{ runner.os }}-build-${{ matrix.project }}-${{ github.sha }}
           restore-keys: |
             ${{ runner.os }}-build-${{ matrix.project }}-
-          save-always: false
 
       - name: Build ${{ matrix.project }}
         run: |
-          ./gradlew :${{ matrix.project }}:distZip -PndkPath=${{ github.workspace }}/android-ndk-r26 -Prelease --no-daemon
+          ./gradlew :${{ matrix.project }}:distZip -PndkPath=${{ github.workspace }}/android-ndk-r26 -Prelease --no-daemon --stacktrace --info
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v3
