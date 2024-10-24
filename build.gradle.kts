@@ -21,35 +21,33 @@ repositories {
 }
 
 tasks.register("exportProjectInfo") {
-    outputs.file(layout.buildDirectory.file("project-info/projects.json"))
-
     doLast {
-        val projectInfo = subprojects.map { project ->
-            val extension = project.extensions.findByType<NdkPortExtension>()
+        val projects = subprojects.filter { proj ->
+            proj.plugins.hasPlugin("com.android.ndkports.NdkPorts")
+        }.map { proj ->
+            // Read properties from subproject's gradle.properties
+            val libName: String? = proj.findProperty("libName") as? String
+            val libVersion: String? = proj.findProperty("libVersion") as? String
+
             mapOf(
-                "directory" to project.projectDir.name,
-                "name" to (extension?.libName ?: project.name),
-                "version" to (extension?.portVersion ?: project.version.toString())
+                "name" to proj.name,
+                "version" to libVersion,
+                "libName" to libName
             )
         }
 
-        val outputDir = layout.buildDirectory.file("project-info").get().asFile
-        outputDir.mkdirs()
+        val matrix = mapOf("project" to projects)
+        val json = groovy.json.JsonBuilder(matrix).toPrettyString()
 
-        val outputFile = outputDir.resolve("projects.json")
-        outputFile.writeText(groovy.json.JsonOutput.toJson(mapOf(
-            "project" to projectInfo
-        )))
+        project.buildDir.resolve("project-info").apply {
+            mkdirs()
+            resolve("projects.json").writeText(json)
+        }
     }
 }
 
-// openssl/build.gradle.kts
-configure<NdkPortExtension> {
-    libName = "OpenSSL"
-    portVersion = "1.0.0"
-}
-
-tasks.register("release") {
+tasks.register("openssl") {
+     dependsOn(":openssl:distZip")
     // dependsOn(project.getTasksByName("test", true))
-    dependsOn(project.getTasksByName("distZip", true))
+    // dependsOn(project.getTasksByName("distZip", true))
 }

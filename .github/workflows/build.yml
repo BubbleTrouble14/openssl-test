@@ -9,27 +9,36 @@ on:
 
 jobs:
   detect-projects:
-    runs-on: ubuntu-latest
-    outputs:
-      matrix: ${{ steps.get-projects.outputs.matrix }}
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          submodules: true
+      runs-on: ubuntu-latest
+      outputs:
+        matrix: ${{ steps.get-projects.outputs.matrix }}
+      steps:
+        - uses: actions/checkout@v4
+          with:
+            submodules: true
 
-      - name: Set up JDK
-        uses: actions/setup-java@v4
-        with:
-          distribution: 'temurin'
-          java-version: '17'
+        - name: Set up JDK
+          uses: actions/setup-java@v4
+          with:
+            distribution: 'temurin'
+            java-version: '17'
 
-      - name: Get project information
-        id: get-projects
-        run: |
-          ./gradlew exportProjectInfo
-          matrix=$(cat build/project-info/projects.json)
-          echo "matrix=${matrix}" >> "$GITHUB_OUTPUT"
-          echo "Found projects: ${matrix}"
+        - name: Set up Android NDK
+          uses: nttld/setup-ndk@v1
+          with:
+            ndk-version: r25c
+            local-cache: true
+
+        - name: Get project information
+          id: get-projects
+          run: |
+            chmod +x gradlew
+            ./gradlew exportProjectInfo -PndkPath=$ANDROID_NDK_HOME
+
+            # Read and set the matrix from the generated JSON file
+            matrix=$(cat build/project-info/projects.json)
+            echo "Found projects: $matrix"
+            echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
 
   build:
     needs: detect-projects
@@ -38,20 +47,57 @@ jobs:
       matrix: ${{fromJson(needs.detect-projects.outputs.matrix)}}
       fail-fast: false
     outputs:
-      version: ${{ matrix.project.version }}  # Note: Now using version from Gradle
+      version: ${{ steps.get_version.outputs.version }}
 
     steps:
       - uses: actions/checkout@v4
         with:
           submodules: true
 
-      - name: Build ${{ matrix.project.name }}
+      - name: Get version
+        id: get_version
         run: |
-          ./gradlew :${{ matrix.project.directory }}:distZip \
+          # Check if the file exists first
+          if [ ! -f "${{ matrix.project }}/build.gradle.kts" ]; then
+            echo "Error: build.gradle.kts not found in ${{ matrix.project }} directory"
+            exit 1
+          fi
+          VERSION=$(grep "val portVersion = " ${{ matrix.project }}/build.gradle.kts | sed 's/.*"\(.*\)".*/\1/')
+          if [[ -z "$VERSION" ]]; then
+            echo "Failed to extract version"
+            echo "Content of ${{ matrix.project }}/build.gradle.kts:"
+            cat ${{ matrix.project }}/build.gradle.kts | grep -A 1 -B 1 "portVersion"
+            exit 1
+          fi
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Detected version: $VERSION"
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          java-version: "17"
+          distribution: "temurin"
+
+      - name: Set up Android NDK
+        uses: nttld/setup-ndk@v1
+        with:
+          ndk-version: r25c
+          local-cache: true
+
+      - name: Import GPG key
+        uses: crazy-max/ghaction-import-gpg@v6
+        with:
+          gpg_private_key: ${{ secrets.GPG_PRIVATE_KEY }}
+          passphrase: ${{ secrets.GPG_PASSPHRASE }}
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
+
+      - name: Build ${{ matrix.project }}
+        run: |
+          ./gradlew :${{ matrix.project }}:distZip \
             -PndkPath=$ANDROID_NDK_HOME \
             -Psigning.gnupg.keyName=${{ secrets.GPG_KEY_ID }} \
             -Psigning.gnupg.passphrase=${{ secrets.GPG_PASSPHRASE }}
-
       - name: Prepare release artifacts
         run: |
           cd build/distributions
@@ -62,17 +108,15 @@ jobs:
           sha1sum "$ZIP_FILE" > "$ZIP_FILE.sha1"
           # Generate signature
           gpg --armor --detach-sign "$ZIP_FILE"
-
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.project.name }}-build-artifacts
+          name: ${{ matrix.project }}-build-artifacts
           path: |
-            build/distributions/${{ matrix.project.name }}-${{ steps.get_version.outputs.version }}.zip
-            build/distributions/${{ matrix.project.name }}-${{ steps.get_version.outputs.version }}.zip.asc
-            build/distributions/${{ matrix.project.name }}-${{ steps.get_version.outputs.version }}.zip.sha1
-            build/distributions/${{ matrix.project.name }}-${{ steps.get_version.outputs.version }}.zip.sha256
-
+            build/distributions/${{ matrix.project }}-${{ steps.get_version.outputs.version }}.zip
+            build/distributions/${{ matrix.project }}-${{ steps.get_version.outputs.version }}.zip.asc
+            build/distributions/${{ matrix.project }}-${{ steps.get_version.outputs.version }}.zip.sha1
+            build/distributions/${{ matrix.project }}-${{ steps.get_version.outputs.version }}.zip.sha256
   publish:
     needs: [build, detect-projects]
     runs-on: ubuntu-latest
@@ -86,30 +130,28 @@ jobs:
       - name: Download artifacts
         uses: actions/download-artifact@v4
         with:
-          name: ${{ matrix.project.name }}-build-artifacts
+          name: ${{ matrix.project }}-build-artifacts
           path: artifacts
 
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
           files: |
-            artifacts/${{ matrix.project.name }}-*.zip
-            artifacts/${{ matrix.project.name }}-*.asc
-            artifacts/${{ matrix.project.name }}-*.sha1
-            artifacts/${{ matrix.project.name }}-*.sha256
-          tag_name: ${{ matrix.project.name }}-${{ needs.build.outputs.version }}
-          name: ${{ matrix.project.name }} ${{ needs.build.outputs.version }}
+            artifacts/${{ matrix.project }}-*.zip
+            artifacts/${{ matrix.project }}-*.asc
+            artifacts/${{ matrix.project }}-*.sha1
+            artifacts/${{ matrix.project }}-*.sha256
+          tag_name: ${{ matrix.project }}-${{ needs.build.outputs.version }}
+          name: ${{ matrix.project }} ${{ needs.build.outputs.version }}
           body: |
-            ${{ matrix.project.name }} version ${{ needs.build.outputs.version }}
-
+            ${{ matrix.project }} version ${{ needs.build.outputs.version }}
             ## Verification
             ```bash
             # Verify signature
-            gpg --verify ${{ matrix.project.name }}-${{ needs.build.outputs.version }}.zip.asc ${{ matrix.project.name }}-${{ needs.build.outputs.version }}.zip
-
+            gpg --verify ${{ matrix.project }}-${{ needs.build.outputs.version }}.zip.asc ${{ matrix.project }}-${{ needs.build.outputs.version }}.zip
             # Verify checksums
-            sha256sum -c ${{ matrix.project.name }}-${{ needs.build.outputs.version }}.zip.sha256
-            sha1sum -c ${{ matrix.project.name }}-${{ needs.build.outputs.version }}.zip.sha1
+            sha256sum -c ${{ matrix.project }}-${{ needs.build.outputs.version }}.zip.sha256
+            sha1sum -c ${{ matrix.project }}-${{ needs.build.outputs.version }}.zip.sha1
             ```
           draft: false
           prerelease: false

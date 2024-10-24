@@ -9,14 +9,15 @@ import org.gradle.api.GradleException
 import org.gradle.api.tasks.Copy
 import org.gradle.api.tasks.TaskAction
 
-// val portVersion = "3.4.0"
+val libName = "OpenSSL"
+val portVersion = "3.4.0"
+
 val opensslDownloadUrl = "https://github.com/openssl/openssl/releases/download/openssl-${portVersion}/openssl-${portVersion}.tar.gz"
 val opensslSha256Url = "${opensslDownloadUrl}.sha256"
 val opensslAscUrl = "${opensslDownloadUrl}.asc"
 
 group = "com.github.${System.getenv("GITHUB_REPOSITORY")?.split("/")?.first()?.toLowerCase() ?: "com.github.user"}"
 version = "$portVersion"
-// libName = "OpenSSL"
 
 plugins {
     id("maven-publish")
