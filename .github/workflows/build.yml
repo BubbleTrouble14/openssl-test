@@ -20,30 +20,39 @@ jobs:
       - name: Get all projects with names
         id: set-matrix
         run: |
-          # Create an array to store project info
-          declare -a project_info=()
+          # Initialize a JSON array directly
+          echo '{"project":[' > matrix.json
+          first=true
 
-          # For each project directory
+          # Process each project
           while read -r project; do
-            # Extract the project directory name (without quotes)
             project_dir=$(echo $project | tr -d '"')
 
-            # Extract the name property from build.gradle.kts
             if [ -f "${project_dir}/build.gradle.kts" ]; then
               name=$(grep '^name = ' "${project_dir}/build.gradle.kts" | awk -F'"' '{print $2}')
-              # If name is not found, use project directory
               if [ -z "$name" ]; then
                 name=$(basename ${project_dir})
               fi
-              # Create JSON object with both project directory and name
-              project_info+=("{\"directory\":\"${project_dir}\",\"name\":\"${name}\"}")
+
+              # Add comma if not first entry
+              if [ "$first" = "true" ]; then
+                first=false
+              else
+                echo ',' >> matrix.json
+              fi
+
+              # Add the project entry directly as JSON
+              echo "{\"directory\":\"${project_dir}\",\"name\":\"${name}\"}" >> matrix.json
             fi
           done < <(grep "include" settings.gradle.kts | awk -F'"' '{print $2}')
 
-          # Convert array to JSON
-          json_array=$(printf '%s\n' "${project_info[@]}" | jq -R . | jq -s .)
-          echo "matrix={\"project\":$json_array}" >> $GITHUB_OUTPUT
-          echo "Found projects: $json_array"
+          # Close the JSON array
+          echo ']}' >> matrix.json
+
+          # Set the output
+          matrix=$(cat matrix.json)
+          echo "matrix=$matrix" >> $GITHUB_OUTPUT
+          echo "Found projects: $matrix"
 
   build:
     needs: detect-projects
