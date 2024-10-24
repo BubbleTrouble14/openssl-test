@@ -30,8 +30,9 @@ tasks.register("exportProjectInfo") {
             println("Available properties: ${proj.properties.keys}")
 
             // Read properties from subproject's gradle.properties
-            val version: String? = proj.findProperty("version") as? String
-            val libName: String? = proj.findProperty("libName") as? String
+            // Change this line to use the correct property names
+            val version: String? = proj.findProperty("libVersion") as? String  // Changed from "version"
+            val libName: String? = proj.findProperty("libName") as? String     // Keep as is
 
             // Debug log the values
             println("Found version: $version")
