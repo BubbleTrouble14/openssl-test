@@ -2,10 +2,17 @@ import com.android.ndkports.AndroidExecutableTestTask
 import com.android.ndkports.CMakeCompatibleVersion
 import com.android.ndkports.MesonPortTask
 
-val portVersion = "1.9.5"
+// Get project-specific configuration
+val configs = rootProject.extra["projectConfigs"] as Map<String, Map<String, String>>
+val projectConfig = configs[project.name] ?: error("No configuration found for project ${project.name}")
 
-group = "com.android.ndk.thirdparty"
-version = "$portVersion${rootProject.extra.get("snapshotSuffix")}"
+val libVersion = projectConfig["libVersion"]!!
+val libName = projectConfig["libName"]!!
+
+val portVersion = libVersion
+
+group = "com.github.${System.getenv("GITHUB_REPOSITORY")?.split("/")?.first()?.toLowerCase() ?: "com.github.user"}"
+version = "$portVersion"
 
 plugins {
     id("maven-publish")

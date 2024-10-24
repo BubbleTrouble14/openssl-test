@@ -26,6 +26,10 @@ extra["projectConfigs"] = mapOf(
         "libVersion" to "3.4.0",
         "libName" to "OpenSSL"
     ),
+    "jsoncpp" to mapOf(
+        "libVersion" to "1.9.5",
+        "libName" to "jsoncpp"
+    )
 )
 
 tasks.register("exportProjectInfo") {
