@@ -11,3 +11,4 @@ pluginManagement {
 }
 
 include("openssl")
+include("jsoncpp")
