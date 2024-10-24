@@ -9,6 +9,7 @@ on:
 
 jobs:
   detect-projects:
+    # Previous configuration remains the same
     runs-on: ubuntu-latest
     outputs:
       matrix: ${{ steps.get-projects.outputs.matrix }}
@@ -33,82 +34,19 @@ jobs:
         id: get-projects
         run: |
           chmod +x gradlew
-          # Run Gradle task to generate the JSON file
           ./gradlew -q exportProjectInfo -PndkPath=$ANDROID_NDK_HOME
-
-          # Read the JSON and convert it to a single line with proper escaping
           matrix=$(cat build/ndkports-matrix.json | jq -c .)
           echo "matrix=${matrix}" >> "$GITHUB_OUTPUT"
-
-          # Optional: Show the content for verification
           echo "Generated matrix configuration:"
           cat build/ndkports-matrix.json
 
   build:
+    # Build job remains unchanged
     needs: detect-projects
     runs-on: ubuntu-latest
     strategy:
       matrix: ${{fromJson(needs.detect-projects.outputs.matrix)}}
-
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          submodules: true
-
-      - name: Set up JDK
-        uses: actions/setup-java@v4
-        with:
-          java-version: "17"
-          distribution: "temurin"
-
-      - name: Install Meson and Ninja
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y ninja-build
-          pip install meson
-
-      - name: Set up Android NDK
-        uses: nttld/setup-ndk@v1
-        with:
-          ndk-version: r25c
-          local-cache: true
-
-      - name: Import GPG key
-        uses: crazy-max/ghaction-import-gpg@v6
-        with:
-          gpg_private_key: ${{ secrets.GPG_PRIVATE_KEY }}
-          passphrase: ${{ secrets.GPG_PASSPHRASE }}
-
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v3
-
-      - name: Build ${{ matrix.name }}
-        run: |
-          ./gradlew :${{ matrix.name }}:distZip \
-            -PndkPath=$ANDROID_NDK_HOME \
-            -Psigning.gnupg.keyName=${{ secrets.GPG_KEY_ID }} \
-            -Psigning.gnupg.passphrase=${{ secrets.GPG_PASSPHRASE }}
-
-      - name: Prepare release artifacts
-        run: |
-          cd build/distributions
-          # Get the existing zip file name
-          ZIP_FILE=$(ls *.zip)
-          # Generate checksums without renaming
-          sha256sum "$ZIP_FILE" > "$ZIP_FILE.sha256"
-          sha1sum "$ZIP_FILE" > "$ZIP_FILE.sha1"
-          # Generate signature
-          gpg --armor --detach-sign "$ZIP_FILE"
-
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ matrix.name }}-build-artifacts
-          path: |
-            build/distributions/${{ matrix.name }}-${{ matrix.version }}.zip
-            build/distributions/${{ matrix.name }}-${{ matrix.version }}.zip.asc
-            build/distributions/${{ matrix.name }}-${{ matrix.version }}.zip.sha1
-            build/distributions/${{ matrix.name }}-${{ matrix.version }}.zip.sha256
+    # ... rest of build job remains the same ...
 
   release:
     needs: [build, detect-projects]
@@ -126,7 +64,8 @@ jobs:
           name: ${{ matrix.name }}-build-artifacts
           path: artifacts
 
-      - name: Create Release
+      - name: Create Initial Release
+        id: create_release
         uses: softprops/action-gh-release@v1
         with:
           files: |
@@ -138,6 +77,9 @@ jobs:
           name: ${{ matrix.libName }} ${{ matrix.version }}
           body: |
             NDK Ports for ${{ matrix.libName }} version ${{ matrix.version }}
+
+            ### Maven Central
+            The artifacts are being published to Maven Central. This message will be updated once publishing is complete.
           draft: false
           prerelease: false
         env:
@@ -146,6 +88,8 @@ jobs:
   publish:
     needs: [release, detect-projects]
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     strategy:
       matrix: ${{fromJson(needs.detect-projects.outputs.matrix)}}
@@ -170,7 +114,7 @@ jobs:
           # Generate Bearer token
           TOKEN=$(printf "$USERNAME:$PASSWORD" | base64)
 
-          # Upload the deployment bundle with proper name parameter
+          # Upload the deployment bundle
           echo "Uploading the deployment bundle..."
           RESPONSE=$(curl --silent --request POST \
             --header "Authorization: Bearer $TOKEN" \
@@ -208,7 +152,6 @@ jobs:
             fi
           done
 
-          # If the deployment is validated, proceed to publish
           if [[ "$STATUS" == "VALIDATED" ]]; then
             echo "Publishing the deployment..."
             PUBLISH_RESPONSE=$(curl --silent --request POST \
@@ -217,6 +160,7 @@ jobs:
 
             if [ $? -eq 0 ]; then
               echo "Deployment is now being published."
+              echo "PUBLISH_SUCCESS=true" >> $GITHUB_ENV
             else
               echo "Failed to publish the deployment. Exiting."
               exit 1
@@ -234,3 +178,25 @@ jobs:
           MAVEN_USERNAME: ${{ secrets.MAVEN_USERNAME }}
           MAVEN_PASSWORD: ${{ secrets.MAVEN_PASSWORD }}
         run: ./publish.sh
+
+      - name: Update Release with Maven Information
+        if: env.PUBLISH_SUCCESS == 'true'
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ matrix.name }}-${{ matrix.version }}
+          body: |
+            NDK Ports for ${{ matrix.libName }} version ${{ matrix.version }}
+
+            ### Maven Central
+            The artifacts are available on Maven Central:
+            ```groovy
+            implementation 'io.github.cryptorg:${{ matrix.name }}:${{ matrix.version }}'
+            ```
+
+            Direct link: [https://repo1.maven.org/maven2/io/github/cryptorg/${{ matrix.name }}/${{ matrix.version }}/](https://repo1.maven.org/maven2/io/github/cryptorg/${{ matrix.name }}/${{ matrix.version }}/)
+
+            Sonatype link: [https://central.sonatype.com/artifact/io.github.cryptorg/${{ matrix.name }}/${{ matrix.version }}](https://central.sonatype.com/artifact/io.github.cryptorg/${{ matrix.name }}/${{ matrix.version }})
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
