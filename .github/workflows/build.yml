@@ -57,7 +57,7 @@ jobs:
         id: set-matrix
         run: |
           # Get list of projects
-          projects=$(./gradlew -PndkPath=${{ github.workspace }}/android-ndk-r26 \ -q listProjects --no-daemon)
+          projects=$(./gradlew -q listProjects -PndkPath=${{ github.workspace }}/android-ndk-r26 --no-daemon)
           echo "Found projects: $projects"
           echo "matrix={\"project\":$projects}" >> $GITHUB_OUTPUT
 
