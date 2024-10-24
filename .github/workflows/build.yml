@@ -20,8 +20,8 @@ jobs:
       - name: Get all projects
         id: set-matrix
         run: |
-          # Use grep to find include statements and awk to extract project names
-          projects=$(grep "include" settings.gradle | awk -F'"' '{print $2}' | jq -R -s -c 'split("\n") | map(select(length > 0))')
+          # Use grep to find include statements and awk to extract project names from settings.gradle.kts
+          projects=$(grep "include" settings.gradle.kts | awk -F'"' '{print $2}' | jq -R -s -c 'split("\n") | map(select(length > 0))')
           echo "Found projects: $projects"
           echo "matrix={\"project\":$projects}" >> $GITHUB_OUTPUT
 
