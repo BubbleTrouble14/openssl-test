@@ -16,7 +16,7 @@ val opensslAscUrl = "${opensslDownloadUrl}.asc"
 
 group = "com.github.${System.getenv("GITHUB_REPOSITORY")?.split("/")?.first()?.toLowerCase() ?: "com.github.user"}"
 version = "$portVersion"
-name = "OpenSSL"
+libName = "OpenSSL"
 
 plugins {
     id("maven-publish")
