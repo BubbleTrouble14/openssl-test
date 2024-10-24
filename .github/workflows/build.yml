@@ -9,36 +9,50 @@ on:
 
 jobs:
   detect-projects:
-    runs-on: ubuntu-latest
-    outputs:
-      matrix: ${{ steps.get-projects.outputs.matrix }}
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          submodules: true
+      runs-on: ubuntu-latest
+      outputs:
+        matrix: ${{ steps.get-projects.outputs.matrix }}
+      steps:
+        - uses: actions/checkout@v4
+          with:
+            submodules: true
 
-      - name: Set up JDK
-        uses: actions/setup-java@v4
-        with:
-          distribution: "temurin"
-          java-version: "17"
+        - name: Set up JDK
+          uses: actions/setup-java@v4
+          with:
+            distribution: "temurin"
+            java-version: "17"
 
-      - name: Set up Android NDK
-        uses: nttld/setup-ndk@v1
-        with:
-          ndk-version: r25c
-          local-cache: true
+        - name: Set up Android NDK
+          uses: nttld/setup-ndk@v1
+          with:
+            ndk-version: r25c
+            local-cache: true
 
-      - name: Get project information
-        id: get-projects
-        run: |
-          chmod +x gradlew
-          ./gradlew exportProjectInfo -PndkPath=$ANDROID_NDK_HOME
+        - name: Get project information
+          id: get-projects
+          run: |
+            chmod +x gradlew
+            echo "Running exportProjectInfo..."
+            ./gradlew exportProjectInfo -PndkPath=$ANDROID_NDK_HOME
 
-          # Format the JSON specifically for GitHub Actions matrix
-          matrix=$(cat build/project-info/projects.json | jq -c '{"include": .project}')
-          echo "Found projects: $matrix"
-          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+            echo "Contents of projects.json:"
+            cat build/project-info/projects.json
+
+            echo "Creating matrix..."
+            matrix=$(cat build/project-info/projects.json | jq -c '{"include": .project}')
+            echo "Raw matrix value: $matrix"
+
+            # Validate JSON structure
+            echo "Matrix structure:"
+            echo $matrix | jq '.'
+
+            echo "Setting matrix output..."
+            echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+
+            # Show what was written to GITHUB_OUTPUT
+            echo "Content of GITHUB_OUTPUT:"
+            cat $GITHUB_OUTPUT
 
   build:
     needs: detect-projects
