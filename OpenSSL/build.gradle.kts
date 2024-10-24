@@ -14,7 +14,7 @@ val opensslDownloadUrl = "https://github.com/openssl/openssl/releases/download/o
 val opensslSha256Url = "${opensslDownloadUrl}.sha256"
 val opensslAscUrl = "${opensslDownloadUrl}.asc"
 
-group = "io.github.${System.getenv("GITHUB_REPOSITORY")?.split("/")?.first()?.toLowerCase() ?: "io.github.user"}"
+group = "com.github.${System.getenv("GITHUB_REPOSITORY")?.split("/")?.first()?.toLowerCase() ?: "com.github.user"}"
 version = "$portVersion"
 
 plugins {
