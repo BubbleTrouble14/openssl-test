@@ -80,7 +80,6 @@ jobs:
         with:
           java-version: "17"
           distribution: "temurin"
-          cache: none
 
       # Cache NDK
       - name: Cache NDK
