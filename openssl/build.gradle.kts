@@ -225,7 +225,7 @@ distributions {
             // Only include core files and their direct signatures
             include("**/*.aar")
             include("**/*.pom")
-            include("**/*.module")8
+            include("**/*.module")
             include("**/*.aar.asc")
             include("**/*.pom.asc")
             include("**/*.module.asc")
