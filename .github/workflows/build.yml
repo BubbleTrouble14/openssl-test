@@ -20,11 +20,12 @@ jobs:
       - name: Get all projects with names
         id: set-matrix
         run: |
-          # Initialize a JSON array directly
-          echo '{"project":[' > matrix.json
-          first=true
+          # Create a temporary JSON file
+          echo '{' > temp.json
+          echo '  "project": [' >> temp.json
 
           # Process each project
+          first=true
           while read -r project; do
             project_dir=$(echo $project | tr -d '"')
 
@@ -38,21 +39,25 @@ jobs:
               if [ "$first" = "true" ]; then
                 first=false
               else
-                echo ',' >> matrix.json
+                echo ',' >> temp.json
               fi
 
-              # Add the project entry directly as JSON
-              echo "{\"directory\":\"${project_dir}\",\"name\":\"${name}\"}" >> matrix.json
+              # Add the project entry
+              echo "    {" >> temp.json
+              echo "      \"directory\": \"${project_dir}\"," >> temp.json
+              echo "      \"name\": \"${name}\"" >> temp.json
+              echo "    }" >> temp.json
             fi
           done < <(grep "include" settings.gradle.kts | awk -F'"' '{print $2}')
 
-          # Close the JSON array
-          echo ']}' >> matrix.json
+          # Close the JSON
+          echo '  ]' >> temp.json
+          echo '}' >> temp.json
 
-          # Set the output
-          matrix=$(cat matrix.json)
-          echo "matrix=$matrix" >> $GITHUB_OUTPUT
-          echo "Found projects: $matrix"
+          # Convert to single line and escape for GitHub Actions
+          matrix=$(jq -c '.' temp.json)
+          echo "matrix=${matrix}" >> "$GITHUB_OUTPUT"
+          echo "Found projects: ${matrix}"
 
   build:
     needs: detect-projects
