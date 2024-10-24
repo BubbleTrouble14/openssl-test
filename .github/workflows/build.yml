@@ -119,7 +119,7 @@ jobs:
 
       - name: Build ${{ matrix.project }}
         run: |
-          ./gradlew :${{ matrix.project }}:release \
+          ./gradlew :${{ matrix.project }}:distZip \
             -PndkPath=${{ github.workspace }}/android-ndk-r26 \
             -Psigning.gnupg.keyName=${{ secrets.GPG_KEY_ID }} \
             -Psigning.gnupg.passphrase=${{ secrets.GPG_PASSPHRASE }} \
