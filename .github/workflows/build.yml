@@ -31,8 +31,6 @@ jobs:
         with:
           java-version: "17"
           distribution: "temurin"
-          # Disable built-in Gradle caching since we're using our own cache action
-          cache: none
 
       - name: Get all projects
         id: set-matrix
