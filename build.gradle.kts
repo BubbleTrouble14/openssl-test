@@ -53,16 +53,12 @@ tasks.register("exportProjectInfo") {
         }
 
         val matrix = mapOf("include" to projects)
-        val json = groovy.json.JsonBuilder(matrix).toPrettyString()
-        println("Generated JSON: $json")
+        val json = groovy.json.JsonBuilder(matrix).toString()
 
-        project.buildDir.resolve("project-info").apply {
-            mkdirs()
-            resolve("projects.json").writeText(json)
-        }
+        // Output the matrix in a format that GitHub Actions can capture
+        println("::set-output name=matrix::$json")
     }
 }
-
 
 tasks.register("openssl") {
      dependsOn(":openssl:distZip")
