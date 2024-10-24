@@ -1,14 +1,11 @@
-name: Release Management
+name: Build NDK Ports
 
 on:
   push:
-    branches:
-      - release
-      - staging
+    branches: [main]
+  pull_request:
+    branches: [main]
   workflow_dispatch:
-
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE20: true
 
 jobs:
   detect-projects:
@@ -16,12 +13,21 @@ jobs:
     outputs:
       matrix: ${{ steps.set-matrix.outputs.matrix }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v3
+
+      - name: Setup Gradle Cache
+        uses: actions/cache@v3
+        id: gradle-cache
         with:
-          submodules: true
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          restore-keys: |
+            gradle-${{ runner.os }}-
 
       - name: Set up JDK
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v3
         with:
           java-version: "17"
           distribution: "temurin"
@@ -40,60 +46,70 @@ jobs:
       matrix: ${{fromJson(needs.detect-projects.outputs.matrix)}}
       fail-fast: false
 
-    outputs:
-      version: ${{ steps.get_version.outputs.version }}
-      release_name: ${{ steps.set_names.outputs.release_name }}
-      artifact_base: ${{ steps.set_names.outputs.artifact_base }}
-
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v3
+
+      # Cache Gradle files with same key as detect-projects
+      - name: Setup Gradle Cache
+        uses: actions/cache@v3
+        id: gradle-cache
         with:
-          submodules: true
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+            ~/.gradle/native
+            ~/.gradle/daemon
+            ~/.gradle/buildOutputCleanup
+          key: gradle-${{ runner.os }}-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          restore-keys: |
+            gradle-${{ runner.os }}-
 
-      - name: Get version
-        id: get_version
-        run: |
-          # Check if the file exists first
-          if [ ! -f "${{ matrix.project }}/build.gradle.kts" ]; then
-            echo "Error: build.gradle.kts not found in ${{ matrix.project }} directory"
-            exit 1
-          fi
-
-          # Use awk for more reliable extraction
-          VERSION=$(awk '/val portVersion = / {gsub(/"/, "", $5); print $5}' ${{ matrix.project }}/build.gradle.kts)
-
-          if [[ -z "$VERSION" ]]; then
-            echo "Failed to extract version"
-            echo "Content of ${{ matrix.project }}/build.gradle.kts:"
-            cat ${{ matrix.project }}/build.gradle.kts
-            exit 1
-          fi
-
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-          echo "Detected version: $VERSION"
-
-      - name: Set release names
-        id: set_names
-        run: |
-          if [[ "${{ github.ref }}" == "refs/heads/staging" ]]; then
-            echo "release_name=${{ matrix.project }}-${{ steps.get_version.outputs.version }}-beta-1" >> $GITHUB_OUTPUT
-            echo "artifact_base=${{ matrix.project }}-${{ steps.get_version.outputs.version }}-beta-1" >> $GITHUB_OUTPUT
-          else
-            echo "release_name=${{ matrix.project }}-${{ steps.get_version.outputs.version }}" >> $GITHUB_OUTPUT
-            echo "artifact_base=${{ matrix.project }}-${{ steps.get_version.outputs.version }}" >> $GITHUB_OUTPUT
-          fi
-
+      # Set up JDK
       - name: Set up JDK
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v3
         with:
           java-version: "17"
           distribution: "temurin"
 
-      - name: Set up Android NDK
-        uses: nttld/setup-ndk@v1
+      # Cache NDK with commit-based key for better hit rates
+      - name: Cache NDK
+        id: ndk-cache
+        uses: actions/cache@v3
         with:
-          ndk-version: r25c
-          local-cache: true
+          path: |
+            ${{ github.workspace }}/android-ndk-r26
+          key: ndk-${{ runner.os }}-r26-${{ github.sha }}
+          restore-keys: |
+            ndk-${{ runner.os }}-r26-
+
+      - name: Download Android NDK
+        if: steps.ndk-cache.outputs.cache-hit != 'true'
+        run: |
+          wget https://dl.google.com/android/repository/android-ndk-r26-linux.zip
+          unzip android-ndk-r26-linux.zip
+          rm android-ndk-r26-linux.zip
+
+      # Cache build outputs per project
+      - name: Cache Build Outputs
+        uses: actions/cache@v3
+        id: build-cache
+        with:
+          path: |
+            **/build
+            !**/build/distributions
+          key: build-${{ runner.os }}-${{ matrix.project }}-${{ hashFiles(format('{0}/**/*.gradle*', matrix.project)) }}
+          restore-keys: |
+            build-${{ runner.os }}-${{ matrix.project }}-
+
+      # Debug step to verify cache contents
+      - name: Debug Cache
+        run: |
+          echo "Gradle cache contents:"
+          ls -la ~/.gradle/caches || true
+          echo "NDK location:"
+          ls -la ${{ github.workspace }}/android-ndk-r26 || true
+          echo "Build directory:"
+          ls -la **/build || true
 
       - name: Import GPG key
         uses: crazy-max/ghaction-import-gpg@v6
@@ -101,75 +117,43 @@ jobs:
           gpg_private_key: ${{ secrets.GPG_PRIVATE_KEY }}
           passphrase: ${{ secrets.GPG_PASSPHRASE }}
 
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v3
-
-      - name: Build with Gradle
+      - name: Build ${{ matrix.project }}
         run: |
           ./gradlew :${{ matrix.project }}:distZip \
-            -PndkPath=$ANDROID_NDK_HOME \
+            -PndkPath=${{ github.workspace }}/android-ndk-r26 \
             -Psigning.gnupg.keyName=${{ secrets.GPG_KEY_ID }} \
             -Psigning.gnupg.passphrase=${{ secrets.GPG_PASSPHRASE }} \
-            -Prelease
-
-      - name: Prepare release artifacts
-        run: |
-          cd ${{ matrix.project }}/build/distributions
-          # Rename the zip file
-          mv *.zip ${{ steps.set_names.outputs.artifact_base }}.zip
-          # Generate checksums
-          sha256sum ${{ steps.set_names.outputs.artifact_base }}.zip > ${{ steps.set_names.outputs.artifact_base }}.zip.sha256
-          sha1sum ${{ steps.set_names.outputs.artifact_base }}.zip > ${{ steps.set_names.outputs.artifact_base }}.zip.sha1
-          # Generate signature
-          gpg --armor --detach-sign ${{ steps.set_names.outputs.artifact_base }}.zip
+            -Prelease \
+            --no-daemon \
+            --stacktrace \
+            --info \
+            --scan
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v3
         with:
-          name: ${{ matrix.project }}-build-artifacts
-          path: |
-            ${{ matrix.project }}/build/distributions/${{ steps.set_names.outputs.artifact_base }}.zip
-            ${{ matrix.project }}/build/distributions/${{ steps.set_names.outputs.artifact_base }}.zip.asc
-            ${{ matrix.project }}/build/distributions/${{ steps.set_names.outputs.artifact_base }}.zip.sha1
-            ${{ matrix.project }}/build/distributions/${{ steps.set_names.outputs.artifact_base }}.zip.sha256
+          name: ${{ matrix.project }}-artifacts
+          path: ${{ github.workspace }}/build/distributions/*.zip
+          if-no-files-found: error
 
-  release:
-    needs: [detect-projects, build]
-    permissions:
-      contents: write
-    if: github.ref == 'refs/heads/release'
+  publish:
+    needs: build
     runs-on: ubuntu-latest
-
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     steps:
+      - uses: actions/checkout@v3
+
       - name: Download all artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v3
         with:
           path: artifacts
 
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
-          tag_name: ${{ needs.build.outputs.release_name }}
-          name: ${{ needs.build.outputs.release_name }}
-          body: |
-            ${{ needs.build.outputs.release_name }}
-
-            ## Verification
-            For each artifact:
-            ```bash
-            # Verify signature
-            gpg --verify <artifact>.zip.asc <artifact>.zip
-
-            # Verify checksums
-            sha256sum -c <artifact>.zip.sha256
-            sha1sum -c <artifact>.zip.sha1
-            ```
+          files: artifacts/**/*.zip
+          tag_name: ${{ github.sha }}
           draft: false
-          prerelease: ${{ github.ref == 'refs/heads/staging' }}
-          files: |
-            artifacts/**/*.zip
-            artifacts/**/*.asc
-            artifacts/**/*.sha1
-            artifacts/**/*.sha256
+          prerelease: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
