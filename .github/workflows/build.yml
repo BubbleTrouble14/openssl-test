@@ -89,13 +89,13 @@ jobs:
       - name: Prepare release artifacts
         run: |
           cd build/distributions
-          # Rename the zip file
-          mv *.zip ${{ matrix.project }}-${{ steps.get_version.outputs.version }}.zip
-          # Generate checksums
-          sha256sum ${{ matrix.project }}-${{ steps.get_version.outputs.version }}.zip > ${{ matrix.project }}-${{ steps.get_version.outputs.version }}.zip.sha256
-          sha1sum ${{ matrix.project }}-${{ steps.get_version.outputs.version }}.zip > ${{ matrix.project }}-${{ steps.get_version.outputs.version }}.zip.sha1
+          # Get the existing zip file name
+          ZIP_FILE=$(ls *.zip)
+          # Generate checksums without renaming
+          sha256sum "$ZIP_FILE" > "$ZIP_FILE.sha256"
+          sha1sum "$ZIP_FILE" > "$ZIP_FILE.sha1"
           # Generate signature
-          gpg --armor --detach-sign ${{ matrix.project }}-${{ steps.get_version.outputs.version }}.zip
+          gpg --armor --detach-sign "$ZIP_FILE"
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
