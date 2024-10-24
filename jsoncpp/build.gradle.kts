@@ -1,6 +1,11 @@
 import com.android.ndkports.AndroidExecutableTestTask
 import com.android.ndkports.CMakeCompatibleVersion
 import com.android.ndkports.MesonPortTask
+import org.gradle.api.DefaultTask
+import org.gradle.api.GradleException
+import java.io.File
+import java.net.URL
+import java.security.MessageDigest
 
 // Get project-specific configuration
 val configs = rootProject.extra["projectConfigs"] as Map<String, Map<String, String>>
@@ -11,12 +16,15 @@ val libName = projectConfig["libName"]!!
 
 val portVersion = libVersion
 
+val jsoncppDownloadUrl = "https://github.com/open-source-parsers/jsoncpp/archive/refs/tags/${portVersion}.tar.gz"
+
 group = "com.github.${System.getenv("GITHUB_REPOSITORY")?.split("/")?.first()?.toLowerCase() ?: "com.github.user"}"
 version = "$portVersion"
 
 plugins {
     id("maven-publish")
     id("com.android.ndkports.NdkPorts")
+    id("signing")
     distribution
 }
 
@@ -26,7 +34,27 @@ ndkPorts {
     minSdkVersion.set(16)
 }
 
+// Task to download JsonCpp source
+tasks.register<DefaultTask>("downloadJsonCpp") {
+    val outputFile = project.file("src.tar.gz")
+    outputs.file(outputFile)
+
+    doLast {
+        // Download source
+        URL(jsoncppDownloadUrl).openStream().use { input ->
+            outputFile.outputStream().use { output ->
+                input.copyTo(output)
+            }
+        }
+
+        // Set the source property after download
+        ndkPorts.source.set(outputFile)
+    }
+}
+
 tasks.extractSrc {
+    dependsOn("downloadJsonCpp")
+
     doLast {
         // jsoncpp has a "version" file on the include path that conflicts with
         // https://en.cppreference.com/w/cpp/header/version. Remove it so we can
@@ -62,8 +90,6 @@ tasks.register<AndroidExecutableTestTask>("test") {
     }
 
     run {
-        // JsonCpp has other tests, but they require running Python on the
-        // device.
         shellTest(
             "jsoncpp_test", listOf(
                 "LD_LIBRARY_PATH=$deviceDirectory",
@@ -110,12 +136,17 @@ publishing {
     }
 }
 
+// Configure signing
+signing {
+    useGpgCmd()
+    sign(publishing.publications["maven"])
+}
+
 distributions {
     main {
         contents {
             from("${project.buildDir}/repository")
-            include("**/*.aar")
-            include("**/*.pom")
+            include("**/*")
         }
     }
 }
