@@ -111,10 +111,18 @@ jobs:
           echo "Build directory:"
           ls -la **/build || true
 
+      - name: Import GPG key
+        uses: crazy-max/ghaction-import-gpg@v6
+        with:
+          gpg_private_key: ${{ secrets.GPG_PRIVATE_KEY }}
+          passphrase: ${{ secrets.GPG_PASSPHRASE }}
+
       - name: Build ${{ matrix.project }}
         run: |
           ./gradlew :${{ matrix.project }}:distZip \
             -PndkPath=${{ github.workspace }}/android-ndk-r26 \
+            -Psigning.gnupg.keyName=${{ secrets.GPG_KEY_ID }} \
+            -Psigning.gnupg.passphrase=${{ secrets.GPG_PASSPHRASE }} \
             -Prelease \
             --no-daemon \
             --stacktrace \

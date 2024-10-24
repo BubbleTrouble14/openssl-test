@@ -223,3 +223,8 @@ tasks {
         destinationDirectory.set(File(rootProject.buildDir, "distributions"))
     }
 }
+
+
+tasks.register("release") {
+    dependsOn(project.getTasksByName("distZip", true))
+}
