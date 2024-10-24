@@ -178,9 +178,9 @@ publishing {
             pom {
                 name.set("OpenSSL")
                 description.set("The ndkports AAR for OpenSSL.")
-                url.set(
-                    "https://android.googlesource.com/platform/tools/ndkports"
-                )
+                // Update repository URL to use the current repository
+                val repoUrl = "https://github.com/${System.getenv("GITHUB_REPOSITORY") ?: "user/repo"}"
+                url.set(repoUrl)
                 licenses {
                     license {
                         name.set("Dual OpenSSL and SSLeay License")
@@ -194,8 +194,9 @@ publishing {
                     }
                 }
                 scm {
-                    url.set("https://android.googlesource.com/platform/tools/ndkports")
-                    connection.set("scm:git:https://android.googlesource.com/platform/tools/ndkports")
+                    // Update SCM URLs to use the current repository
+                    url.set(repoUrl)
+                    connection.set("scm:git:${repoUrl}.git")
                 }
             }
         }
