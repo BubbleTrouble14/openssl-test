@@ -176,7 +176,7 @@ jobs:
           # Generate Bearer token
           TOKEN=$(printf "$USERNAME:$PASSWORD" | base64)
 
-          # Upload the deployment bundle with proper name parameter
+          # Upload the deployment bundle
           echo "Uploading the deployment bundle..."
           RESPONSE=$(curl --silent --request POST \
             --header "Authorization: Bearer $TOKEN" \
@@ -194,44 +194,48 @@ jobs:
 
           echo "Deployment ID: $DEPLOYMENT_ID"
 
-          # Poll the status until it's validated or fails
+          # Poll the status until it's published or fails
           STATUS="PENDING"
-          while [[ "$STATUS" == "PENDING" || "$STATUS" == "VALIDATING" ]]; do
-            echo "Checking deployment status..."
-            sleep 10
+          MAX_ATTEMPTS=60  # 10 minutes maximum wait time
+          ATTEMPT=0
+
+          while [ $ATTEMPT -lt $MAX_ATTEMPTS ]; do
+            echo "Checking deployment status... (Attempt $((ATTEMPT + 1))/$MAX_ATTEMPTS)"
 
             RESPONSE=$(curl --silent --request POST \
               --header "Authorization: Bearer $TOKEN" \
               "https://central.sonatype.com/api/v1/publisher/status?id=$DEPLOYMENT_ID")
 
             STATUS=$(echo "$RESPONSE" | jq -r '.deploymentState')
-
             echo "Current Status: $STATUS"
 
-            if [[ "$STATUS" == "FAILED" ]]; then
-              echo "Deployment failed. Exiting."
-              exit 1
-            fi
+            case $STATUS in
+              "PUBLISHED")
+                echo "Successfully published to Maven Central!"
+                echo "PUBLISH_SUCCESS=true" >> $GITHUB_ENV
+                exit 0
+                ;;
+              "FAILED")
+                echo "Deployment failed. Error details:"
+                echo "$RESPONSE" | jq -r '.errors[]'
+                exit 1
+                ;;
+              "PENDING"|"VALIDATING"|"PUBLISHING")
+                # These are expected intermediate states, continue waiting
+                ;;
+              *)
+                echo "Unknown status: $STATUS"
+                echo "Full response: $RESPONSE"
+                exit 1
+                ;;
+            esac
+
+            ATTEMPT=$((ATTEMPT + 1))
+            sleep 10
           done
 
-          # If the deployment is validated, proceed to publish
-          if [[ "$STATUS" == "VALIDATED" ]]; then
-            echo "Publishing the deployment..."
-            PUBLISH_RESPONSE=$(curl --silent --request POST \
-              --header "Authorization: Bearer $TOKEN" \
-              "https://central.sonatype.com/api/v1/publisher/deployment/$DEPLOYMENT_ID")
-
-            if [ $? -eq 0 ]; then
-              echo "Deployment is now being published."
-              echo "PUBLISH_SUCCESS=true" >> $GITHUB_ENV  # Add this line to set the environment variable
-            else
-              echo "Failed to publish the deployment. Exiting."
-              exit 1
-            fi
-          else
-            echo "Deployment status is not validated. Status: $STATUS"
-            exit 1
-          fi
+          echo "Timeout waiting for publication. Last status: $STATUS"
+          exit 1
           EOF
 
           chmod +x publish.sh
