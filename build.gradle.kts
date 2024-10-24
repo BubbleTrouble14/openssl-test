@@ -28,7 +28,7 @@ extra["projectConfigs"] = mapOf(
     ),
     "jsoncpp" to mapOf(
         "libVersion" to "1.9.5",
-        "libName" to "jsoncpp"
+        "libName" to "JsonCpp"
     )
 )
 
