@@ -22,7 +22,7 @@ val opensslDownloadUrl = "https://github.com/openssl/openssl/releases/download/o
 val opensslSha256Url = "${opensslDownloadUrl}.sha256"
 val opensslAscUrl = "${opensslDownloadUrl}.asc"
 
-group = "com.github.${System.getenv("GITHUB_REPOSITORY")?.split("/")?.first()?.toLowerCase() ?: "com.github.user"}"
+group = "io.github.cryptorg"
 version = "$portVersion"
 
 plugins {
@@ -219,9 +219,27 @@ distributions {
     main {
         contents {
             from("${project.buildDir}/repository")
-            include("**/*")
-            // include("**/*.aar")
-            // include("**/*.pom")
+
+            into("/") // Force files to be at root of zip
+
+            // Only include core files and their direct signatures
+            include("**/*.aar")
+            include("**/*.pom")
+            include("**/*.module")8
+            include("**/*.aar.asc")
+            include("**/*.pom.asc")
+            include("**/*.module.asc")
+            include("**/*.aar.sha256")
+            include("**/*.pom.sha256")
+            include("**/*.module.sha256")
+            include("**/*.aar.sha512")
+            include("**/*.pom.sha512")
+            include("**/*.module.sha512")
+            include("**/maven-metadata.xml")
+            include("**/maven-metadata.xml.asc")
+            include("**/maven-metadata.xml.sha256")
+            include("**/maven-metadata.xml.sha512")
+
         }
     }
 }

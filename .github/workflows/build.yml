@@ -170,11 +170,13 @@ jobs:
           # Generate Bearer token
           TOKEN=$(printf "$USERNAME:$PASSWORD" | base64)
 
-          # Upload the deployment bundle
+          # Upload the deployment bundle with proper name parameter
           echo "Uploading the deployment bundle..."
           RESPONSE=$(curl --silent --request POST \
             --header "Authorization: Bearer $TOKEN" \
             --form "bundle=@$BUNDLE_FILE" \
+            --form-string "name=io.github.cryptorg:${{ matrix.name }}:${{ matrix.version }}" \
+            --form-string "publishingType=AUTOMATIC" \
             'https://central.sonatype.com/api/v1/publisher/upload')
 
           DEPLOYMENT_ID=$(echo "$RESPONSE" | tr -d '\n')

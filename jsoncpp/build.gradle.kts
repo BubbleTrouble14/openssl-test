@@ -18,7 +18,7 @@ val portVersion = libVersion
 
 val jsoncppDownloadUrl = "https://github.com/open-source-parsers/jsoncpp/archive/refs/tags/${portVersion}.tar.gz"
 
-group = "com.github.${System.getenv("GITHUB_REPOSITORY")?.split("/")?.first()?.toLowerCase() ?: "com.github.user"}"
+group = "com.github.bubbletrouble14"
 version = "$portVersion"
 
 plugins {
