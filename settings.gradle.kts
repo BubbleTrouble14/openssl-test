@@ -10,4 +10,4 @@ pluginManagement {
     }
 }
 
-include("OpenSSL")
+include("openssl")
