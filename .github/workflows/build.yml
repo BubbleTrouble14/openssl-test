@@ -36,9 +36,9 @@ jobs:
           # Run Gradle task to generate the JSON file
           ./gradlew -q exportProjectInfo -PndkPath=$ANDROID_NDK_HOME
 
-          # Read the JSON file and set it as the matrix
-          matrix=$(cat build/ndkports-matrix.json)
-          echo "matrix=$matrix" >> $GITHUB_OUTPUT
+          # Read the JSON and convert it to a single line with proper escaping
+          matrix=$(cat build/ndkports-matrix.json | jq -c .)
+          echo "matrix=${matrix}" >> "$GITHUB_OUTPUT"
 
           # Optional: Show the content for verification
           echo "Generated matrix configuration:"
