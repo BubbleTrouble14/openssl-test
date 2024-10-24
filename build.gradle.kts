@@ -52,7 +52,7 @@ tasks.register("exportProjectInfo") {
             )
         }
 
-        val matrix = mapOf("inlcude" to projects)
+        val matrix = mapOf("include" to projects)
         val json = groovy.json.JsonBuilder(matrix).toPrettyString()
         println("Generated JSON: $json")
 

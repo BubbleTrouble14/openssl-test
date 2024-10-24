@@ -33,7 +33,19 @@ jobs:
         id: get-projects
         run: |
           chmod +x gradlew
-          ./gradlew exportProjectInfo -PndkPath=$ANDROID_NDK_HOME >> "$GITHUB_OUTPUT"
+          echo "Running exportProjectInfo..."
+          ./gradlew exportProjectInfo -PndkPath=$ANDROID_NDK_HOME
+
+          echo "Contents of projects.json:"
+          cat build/project-info/projects.json
+
+          echo "Setting matrix output..."
+          matrix=$(cat build/project-info/projects.json)
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+
+          # Show what was written to GITHUB_OUTPUT
+          echo "Content of GITHUB_OUTPUT:"
+          cat $GITHUB_OUTPUT
 
   build:
     needs: detect-projects
