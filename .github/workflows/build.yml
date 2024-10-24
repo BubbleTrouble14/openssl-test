@@ -8,48 +8,14 @@ on:
   workflow_dispatch:
 
 jobs:
-  detect-projects:
+  build:
     runs-on: ubuntu-latest
     outputs:
       matrix: ${{ steps.set-matrix.outputs.matrix }}
-    steps:
-      - uses: actions/checkout@v3
-
-      - name: Setup Gradle Cache
-        uses: actions/cache@v3
-        id: gradle-cache
-        with:
-          path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-          key: gradle-${{ runner.os }}-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
-          restore-keys: |
-            gradle-${{ runner.os }}-
-
-      - name: Set up JDK
-        uses: actions/setup-java@v3
-        with:
-          java-version: "17"
-          distribution: "temurin"
-
-      - name: Get all projects
-        id: set-matrix
-        run: |
-          projects=$(./gradlew -q listProjects --no-daemon)
-          echo "Found projects: $projects"
-          echo "matrix={\"project\":$projects}" >> $GITHUB_OUTPUT
-
-  build:
-    needs: detect-projects
-    runs-on: ubuntu-latest
-    strategy:
-      matrix: ${{fromJson(needs.detect-projects.outputs.matrix)}}
-      fail-fast: false
 
     steps:
       - uses: actions/checkout@v3
 
-      # Cache Gradle files with same key as detect-projects
       - name: Setup Gradle Cache
         uses: actions/cache@v3
         id: gradle-cache
@@ -64,14 +30,12 @@ jobs:
           restore-keys: |
             gradle-${{ runner.os }}-
 
-      # Set up JDK
       - name: Set up JDK
         uses: actions/setup-java@v3
         with:
           java-version: "17"
           distribution: "temurin"
 
-      # Cache NDK with commit-based key for better hit rates
       - name: Cache NDK
         id: ndk-cache
         uses: actions/cache@v3
@@ -89,27 +53,38 @@ jobs:
           unzip android-ndk-r26-linux.zip
           rm android-ndk-r26-linux.zip
 
-      # Cache build outputs per project
-      - name: Cache Build Outputs
-        uses: actions/cache@v3
-        id: build-cache
-        with:
-          path: |
-            **/build
-            !**/build/distributions
-          key: build-${{ runner.os }}-${{ matrix.project }}-${{ hashFiles(format('{0}/**/*.gradle*', matrix.project)) }}
-          restore-keys: |
-            build-${{ runner.os }}-${{ matrix.project }}-
-
-      # Debug step to verify cache contents
-      - name: Debug Cache
+      - name: Get projects and build matrix
+        id: set-matrix
         run: |
-          echo "Gradle cache contents:"
-          ls -la ~/.gradle/caches || true
-          echo "NDK location:"
-          ls -la ${{ github.workspace }}/android-ndk-r26 || true
-          echo "Build directory:"
-          ls -la **/build || true
+          # Get list of projects
+          projects=$(./gradlew -q listProjects --no-daemon)
+          echo "Found projects: $projects"
+          echo "matrix={\"project\":$projects}" >> $GITHUB_OUTPUT
+
+          # Now build each project in a loop
+          projects_array=$(echo $projects | jq -r '.[]')
+          for project in $projects_array; do
+            echo "Building $project..."
+
+            # Cache build outputs per project
+            mkdir -p $project/build
+
+            ./gradlew :$project:distZip \
+              -PndkPath=${{ github.workspace }}/android-ndk-r26 \
+              -Psigning.gnupg.keyName=${{ secrets.GPG_KEY_ID }} \
+              -Psigning.gnupg.passphrase=${{ secrets.GPG_PASSPHRASE }} \
+              -Prelease \
+              --no-daemon \
+              --stacktrace \
+              --info \
+              --scan || exit 1
+
+            # Upload artifacts for this project
+            if [ -d "${{ github.workspace }}/build/distributions" ]; then
+              mkdir -p artifacts/$project
+              cp ${{ github.workspace }}/build/distributions/*.zip artifacts/$project/
+            fi
+          done
 
       - name: Import GPG key
         uses: crazy-max/ghaction-import-gpg@v6
@@ -117,23 +92,11 @@ jobs:
           gpg_private_key: ${{ secrets.GPG_PRIVATE_KEY }}
           passphrase: ${{ secrets.GPG_PASSPHRASE }}
 
-      - name: Build ${{ matrix.project }}
-        run: |
-          ./gradlew :${{ matrix.project }}:distZip \
-            -PndkPath=${{ github.workspace }}/android-ndk-r26 \
-            -Psigning.gnupg.keyName=${{ secrets.GPG_KEY_ID }} \
-            -Psigning.gnupg.passphrase=${{ secrets.GPG_PASSPHRASE }} \
-            -Prelease \
-            --no-daemon \
-            --stacktrace \
-            --info \
-            --scan
-
-      - name: Upload artifacts
+      - name: Upload all artifacts
         uses: actions/upload-artifact@v3
         with:
-          name: ${{ matrix.project }}-artifacts
-          path: ${{ github.workspace }}/build/distributions/*.zip
+          name: all-project-artifacts
+          path: artifacts/**/*.zip
           if-no-files-found: error
 
   publish:
