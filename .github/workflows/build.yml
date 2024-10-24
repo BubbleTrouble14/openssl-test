@@ -53,13 +53,22 @@ jobs:
       - name: Get version
         id: get_version
         run: |
-          VERSION=$(grep "val portVersion = " ${{ matrix.project }}/build.gradle.kts | sed 's/.*"\(.*\)".*/\1/')
+          # Check if the file exists first
+          if [ ! -f "${{ matrix.project }}/build.gradle.kts" ]; then
+            echo "Error: build.gradle.kts not found in ${{ matrix.project }} directory"
+            exit 1
+          fi
+
+          # Use awk for more reliable extraction
+          VERSION=$(awk '/val portVersion = / {gsub(/"/, "", $5); print $5}' ${{ matrix.project }}/build.gradle.kts)
+
           if [[ -z "$VERSION" ]]; then
             echo "Failed to extract version"
             echo "Content of ${{ matrix.project }}/build.gradle.kts:"
-            cat ${{ matrix.project }}/build.gradle.kts | grep -A 1 -B 1 "portVersion"
+            cat ${{ matrix.project }}/build.gradle.kts
             exit 1
           fi
+
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "Detected version: $VERSION"
 
