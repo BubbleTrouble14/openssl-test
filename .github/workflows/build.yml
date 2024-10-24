@@ -35,8 +35,8 @@ jobs:
           chmod +x gradlew
           ./gradlew exportProjectInfo -PndkPath=$ANDROID_NDK_HOME
 
-          # Read and set the matrix from the generated JSON file
-          matrix=$(cat build/project-info/projects.json)
+          # Format the JSON specifically for GitHub Actions matrix
+          matrix=$(cat build/project-info/projects.json | jq -c '{"include": .project}')
           echo "Found projects: $matrix"
           echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
 
